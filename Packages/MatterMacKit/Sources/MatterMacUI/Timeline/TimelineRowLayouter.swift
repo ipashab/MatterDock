@@ -20,6 +20,8 @@ final class TimelineRowLayouter {
     private(set) var metrics: TimelineRowMetrics
     var context: TimelineContextKey?
     var appearance: RenderAppearance = .light
+    /// Стиль строк (ADR 0041); входит в кэш-ключи и в messageLayout.
+    var style: RowStyle = .flat
     var counters = Counters()
 
     init(caches: TimelineLayoutCaches, budget: ResourceBudget) {
@@ -45,7 +47,7 @@ final class TimelineRowLayouter {
             return rendered(post)
         }
         let key = RenderCacheKey(context: context, item: item.id, revision: item.revision, appearance: appearance,
-                                 fontScaleKey: fontScaleKey)
+                                 fontScaleKey: fontScaleKey, style: style)
         if let cached = caches.renderedText(for: key) {
             counters.renderCacheHits += 1
             return cached
@@ -76,7 +78,7 @@ final class TimelineRowLayouter {
     private func key(for item: TimelineItem, bucket: Int) -> RowLayoutKey? {
         guard let context else { return nil }
         return RowLayoutKey(context: context, item: item.id, revision: item.revision, widthBucket: bucket,
-                            fontScaleKey: fontScaleKey)
+                            fontScaleKey: fontScaleKey, style: style)
     }
 
     /// Cached exact layout, without measuring.
@@ -100,7 +102,8 @@ final class TimelineRowLayouter {
             let text = bodyText(for: item, post: post)
             let contentWidth = TimelineRowMetrics.contentWidth(forLayoutWidth: width)
             let bodyHeight = measurer.height(of: text, width: contentWidth)
-            layout = .message(metrics.messageLayout(for: post, width: width, bodyHeight: bodyHeight, renderer: renderer))
+            layout = .message(metrics.messageLayout(for: post, width: width, bodyHeight: bodyHeight,
+                                                    renderer: renderer, style: style))
         default:
             layout = .separator(separatorLayout(for: item, width: width))
         }
@@ -124,7 +127,7 @@ final class TimelineRowLayouter {
             let contentWidth = TimelineRowMetrics.contentWidth(forLayoutWidth: width)
             let bodyHeight = metrics.estimatedBodyHeight(post.body, contentWidth: contentWidth, budget: budget)
             return metrics.messageLayout(for: post, width: width, bodyHeight: bodyHeight, renderer: renderer,
-                                         exact: false).height
+                                         exact: false, style: style).height
         default:
             return separatorLayout(for: item, width: width).height
         }

@@ -10,25 +10,36 @@ nonisolated struct TimelineContextKey: Hashable, Sendable {
     let target: TimelineTarget
 }
 
-/// Render-cache key (SPEC §13): item id, revision, appearance, and font scale. Width
-/// independent: attributed text does not depend on the layout width.
+/// Стиль строки таймлайна (ADR 0041). Входит в кэш-ключи, поэтому переключение
+/// стиля не читает чужие записи; flat-режим обязан остаться прежним.
+nonisolated enum RowStyle: Hashable, Sendable {
+    case flat
+    case bubble
+}
+
+/// Render-cache key (SPEC §13): item id, revision, appearance, font scale, and row
+/// style. Width independent: attributed text does not depend on the layout width —
+/// but it does depend on the style's rendering surface (ADR 0041 §3.7).
 nonisolated struct RenderCacheKey: Hashable, Sendable {
     let context: TimelineContextKey
     let item: TimelineItemID
     let revision: UInt64
     let appearance: RenderAppearance
     let fontScaleKey: Int
+    let style: RowStyle
 }
 
-/// Row-layout key: item id, revision, width bucket (`floor(width / 8)`), font scale.
-/// Grouping context and attachment layout are part of the item's revision (Core bumps
-/// the revision whenever anything affecting rendering or height changes).
+/// Row-layout key: item id, revision, width bucket (`floor(width / 8)`), font scale,
+/// and row style. Grouping context and attachment layout are part of the item's
+/// revision (Core bumps the revision whenever anything affecting rendering or
+/// height changes).
 nonisolated struct RowLayoutKey: Hashable, Sendable {
     let context: TimelineContextKey
     let item: TimelineItemID
     let revision: UInt64
     let widthBucket: Int
     let fontScaleKey: Int
+    let style: RowStyle
 }
 
 /// The two bounded layout caches of the timeline, each taking half of
@@ -126,16 +137,22 @@ final class TextMeasurer {
         storage.addLayoutManager(layoutManager)
     }
 
-    /// Height of `text` laid out at `width`, rounded up to whole points.
-    func height(of text: NSAttributedString, width: CGFloat) -> CGFloat {
-        guard text.length > 0 else { return 0 }
+    /// Full layout measurement of `text` at `width`: height and the used width
+    /// (для hug-ширины пузыря, ADR 0041 §3.5), both rounded up to whole points.
+    func measure(of text: NSAttributedString, width: CGFloat) -> (height: CGFloat, usedWidth: CGFloat) {
+        guard text.length > 0 else { return (0, 0) }
         container.size = NSSize(width: max(width, 1), height: CGFloat.greatestFiniteMagnitude)
         storage.setAttributedString(text)
         layoutManager.ensureLayout(for: container)
         let used = layoutManager.usedRect(for: container)
         // Release glyph storage; the stack is reused for the next row.
         storage.setAttributedString(NSAttributedString())
-        return ceil(used.maxY)
+        return (ceil(used.maxY), ceil(used.width))
+    }
+
+    /// Height of `text` laid out at `width`, rounded up to whole points.
+    func height(of text: NSAttributedString, width: CGFloat) -> CGFloat {
+        measure(of: text, width: width).height
     }
 }
 

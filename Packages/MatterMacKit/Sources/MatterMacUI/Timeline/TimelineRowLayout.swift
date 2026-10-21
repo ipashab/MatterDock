@@ -151,8 +151,20 @@ struct TimelineRowMetrics {
 
     /// Header, avatar, attachments, reactions, and accessories around a body of the
     /// given height. Deterministic: same inputs produce identical frames.
+    /// `style` переключает сетку (ADR 0041): `.flat` — прежняя плоская раскладка;
+    /// `.bubble` — пузыри (реализация — следующие шаги миграции; до готовности
+    /// ветки геометрия .bubble совпадает с .flat, что оставляет оба стиля
+    /// корректными и не меняет flat-поведение).
     func messageLayout(for post: PostPresentation, width: CGFloat, bodyHeight: CGFloat,
-                       renderer: MessageRenderer, exact: Bool = true) -> MessageRowLayout {
+                       renderer: MessageRenderer, exact: Bool = true, style: RowStyle = .flat) -> MessageRowLayout {
+        switch style {
+        case .flat, .bubble:
+            return flatMessageLayout(for: post, width: width, bodyHeight: bodyHeight, renderer: renderer, exact: exact)
+        }
+    }
+
+    private func flatMessageLayout(for post: PostPresentation, width: CGFloat, bodyHeight: CGFloat,
+                                   renderer: MessageRenderer, exact: Bool) -> MessageRowLayout {
         var layout = MessageRowLayout()
         let isSystem: Bool
         if case .system = post.body { isSystem = true } else { isSystem = false }

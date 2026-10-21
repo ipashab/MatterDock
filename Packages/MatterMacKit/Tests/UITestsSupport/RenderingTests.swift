@@ -2,6 +2,7 @@ import AppKit
 import Testing
 import MatterMacModels
 import MatterMacCore
+import TestSupport
 @testable import MatterMacUI
 
 @MainActor @Suite("Native Markdown rendering")
@@ -78,5 +79,55 @@ struct RenderingTests {
             #expect(bounds.minX == 0, "блок \(needle) начинается не от левого края контейнера")
             #expect(bounds.width == 420, "блок \(needle) шире/уже контейнера: \(bounds.width)")
         }
+    }
+
+    /// ADR 0041 M-2: полная мера (высота + занятая ширина) для hug-ширины пузыря.
+    @Test func measureReportsUsedWidthForBubbleHug() {
+        let measurer = TextMeasurer()
+        let renderer = MessageRenderer()
+        let short = renderer.render(MarkupParser.parse("ok"))
+        let long = renderer.render(MarkupParser.parse(String(repeating: "word ", count: 120)))
+        let (h1, w1) = measurer.measure(of: short, width: 400)
+        #expect(h1 > 0 && w1 > 0 && w1 < 400, "однострочник уже контейнера: \(w1)")
+        let (h2, w2) = measurer.measure(of: long, width: 400)
+        #expect(h2 > h1, "многострочник выше")
+        #expect(w2 == 400, "перенос Claire занимает всю ширину, а не \(w2)")
+    }
+
+    /// ADR 0041 M-2: смена стиля строки — другие ключи; кэши не читают чужие записи.
+    @Test func styleChangeBypassesLayoutAndRenderCaches() {
+        let caches = TimelineLayoutCaches()
+        let layouter = TimelineRowLayouter(caches: caches, budget: .standard)
+        layouter.context = TimelineContextKey(
+            scope: AccountScope(server: ServerSlotID(1), user: CoreFixtures.me.id),
+            target: .channel(CoreFixtures.channel(1).id))
+        let post = CoreFixtures.post(1, channel: CoreFixtures.channel(1).id)
+        let presentation = PostPresentation(
+            postID: post.id, pendingID: nil, channelID: post.channelID, rootID: nil,
+            author: AuthorPresentation(userID: CoreFixtures.bob.id, displayName: "Bob", username: "bob", isBot: false,
+                                       isCurrentUser: false, avatarRevision: 0),
+            createdAt: post.createAt, isContinuation: false, body: .document(MarkupParser.parse("hello"), isCollapsed: false),
+            isEdited: false, isPinned: false, files: [], reactions: [], replyCount: 0, showsThreadContext: false,
+            sendState: nil, actions: .none, permalink: nil)
+        let item = TimelineItem(id: TimelineItemID(.post(post.id)), revision: 1, content: .post(presentation))
+
+        // Первый проход по каждому ключу — измерения и рендер.
+        _ = layouter.exactLayout(for: item, bucket: 50)
+        _ = layouter.bodyText(for: item, post: presentation)
+        #expect(layouter.counters.measurements == 1 && layouter.counters.renders == 1)
+        // Повтор тех же ключей — только попадания в кэш.
+        _ = layouter.exactLayout(for: item, bucket: 50)
+        _ = layouter.bodyText(for: item, post: presentation)
+        #expect(layouter.counters.measurements == 1 && layouter.counters.layoutCacheHits == 1)
+        // exactLayout уже взял текст из кэша + один явный вызов: два хита рендера.
+        #expect(layouter.counters.renders == 1 && layouter.counters.renderCacheHits == 2)
+        // Другой стиль — другие ключи: снова работа, новых хитов нет.
+        layouter.style = .bubble
+        _ = layouter.exactLayout(for: item, bucket: 50)
+        _ = layouter.bodyText(for: item, post: presentation)
+        #expect(layouter.counters.measurements == 2 && layouter.counters.layoutCacheHits == 1)
+        #expect(layouter.counters.renders == 2 && layouter.counters.renderCacheHits == 3)
+        // Память: обе ветки лежат в кэше одновременно, пока не вымоет LRU.
+        #expect(caches.rowLayoutCount == 2 && caches.renderCount == 2)
     }
 }
