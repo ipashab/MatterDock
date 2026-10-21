@@ -2605,3 +2605,15 @@ delete_at, team/channel display name) — официальный клиент р
 url, mismatch мусор, deleted+system флаги) c red-check (декод выключен —
 fail), билдер (embed без цитаты в сторе — сценарий канала; тишина на
 deleted/self-эмбедах) — зелёные; полный прогон пакета — см. запись сессии.
+
+Патч **v0.11.1** (build 5): полный прогон пакета зелёный (245 тестов,
+43 сюиты, flake не сработал). Коммит фикса `e2b84d4`, бамп `9cedace`.
+Debug-сборка подписана и заменена в /Applications, запущена. Release
+universal собран, `codesign --verify --deep --strict` OK (и внутри DMG);
+DMG 13 MB + ZIP 11 MB, `hdiutil verify` VALID, содержимое проверенo
+монтированием (app + симлинк Applications). Релиз опубликован:
+https://github.com/ipashab/MatterDock/releases/tag/v0.11.1
+
+Следующая задача: подтверждение пользователя, что карточка «Рил?» видна
+в канале Бродяги; далее — кандидаты по API-гэпам (папки, thread-level
+Mark as Unread, permalink-карточки, post priority, insights).
