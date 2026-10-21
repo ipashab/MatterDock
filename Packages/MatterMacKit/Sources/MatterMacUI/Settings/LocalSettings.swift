@@ -62,6 +62,7 @@ public final class LocalSettings {
         case textSize = "MatterMac.textSize"
         case appearance = "MatterMac.appearance"
         case language = "MatterMac.language"
+        case bubbleTimeline = "MatterMac.bubbleTimeline"
         case notificationsEnabled = "MatterMac.notificationsEnabled"
         case showMessagePreview = "MatterMac.showMessagePreview"
         case playSound = "MatterMac.playSound"
@@ -88,6 +89,11 @@ public final class LocalSettings {
     }
     public var textSize: TextSize = .standard {
         didSet { save(.textSize, textSize.rawValue) }
+    }
+    /// Сообщения в Telegram-стиле — пузырями (ADR 0041). Выключено на время
+    /// миграции; переключение прогоняет сброс высот, как смена размера текста.
+    public var bubbleTimeline = false {
+        didSet { save(.bubbleTimeline, bubbleTimeline) }
     }
     public var appearance: Appearance = .system {
         didSet {
@@ -147,6 +153,7 @@ public final class LocalSettings {
             let read = Reader(storage: storage)
             sendBehavior = read.value(.sendBehavior) ?? sendBehavior
             textSize = read.value(.textSize) ?? textSize
+            bubbleTimeline = read.bool(.bubbleTimeline) ?? bubbleTimeline
             appearance = read.value(.appearance) ?? appearance
             language = read.value(.language) ?? language
             notificationsEnabled = read.bool(.notificationsEnabled) ?? notificationsEnabled

@@ -145,6 +145,20 @@ struct BubbleLayoutTests {
         let path = MessageCellView.bubblePath(bubble)
         #expect(path.bounds == bubble.frame, "контур точно в рамке пузыря")
     }
+
+    /// ADR 0041 M-6: переключение стиля контроллером переводит layouter и
+    /// сбрасывает измерения (тот же путь, что смена размера текста).
+    @MainActor @Test func controllerSwitchesRowStyle() {
+        let controller = TimelineViewController()
+        #expect(controller.layouter.style == .flat, "default off")
+        controller.usesBubbleStyle = true
+        #expect(controller.layouter.style == .bubble)
+        controller.usesBubbleStyle = false
+        #expect(controller.layouter.style == .flat)
+        // Повторная установка того же значения не дёргает сброс.
+        controller.usesBubbleStyle = false
+        #expect(!controller.isViewLoaded)
+    }
 }
 
 /// Хост-стаб для прямой конфигурации MessageCellView без окна и контроллера.

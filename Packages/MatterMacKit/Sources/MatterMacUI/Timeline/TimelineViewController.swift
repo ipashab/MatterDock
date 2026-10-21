@@ -32,6 +32,18 @@ public final class TimelineViewController: NSViewController {
         didSet { if TimelineFonts.scaleKey(for: oldValue) != TimelineFonts.scaleKey(for: fontScale) { rendererDidChange(fontScaleChanged: true) } }
     }
 
+    /// Сообщения пузырями в Telegram-стиле (ADR 0041; применяется из «On This
+    /// Mac», default off). Переключение — тот же сброс, что смена размера текста:
+    /// все высоты переоцениваются, кэш-ключи уже несут стиль, поэтому чужие записи
+    /// не переиспользуются.
+    public var usesBubbleStyle = false {
+        didSet {
+            guard oldValue != usesBubbleStyle else { return }
+            layouter.style = usesBubbleStyle ? .bubble : .flat
+            rendererDidChange(fontScaleChanged: true)
+        }
+    }
+
     /// 24-hour (`true`) or 12-hour message times from the account's server
     /// preference; `nil` follows the Mac. Re-renders visible rows when it changes.
     public var uses24HourClock: Bool? {

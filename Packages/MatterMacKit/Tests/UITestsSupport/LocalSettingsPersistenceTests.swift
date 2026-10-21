@@ -46,6 +46,8 @@ struct LocalSettingsPersistenceTests {
             #expect(settings.soundName == SystemSounds.defaultName)
             #expect(settings.sendBehavior == .returnSends && settings.textSize == .standard && settings.appearance == .system)
             #expect(settings.language == .system)
+            // Пузыри выключены по умолчанию (ADR 0041, миграция).
+            #expect(!settings.bubbleTimeline)
             // MatterDock: самообновления выключены по умолчанию (форк распространяется пересборкой).
             #expect(!settings.checksForUpdates && settings.updateChannel == nil)
             #expect(settings.theme == .system)
@@ -66,6 +68,7 @@ struct LocalSettingsPersistenceTests {
         first.bounceDockIcon = false
         first.sendBehavior = .commandReturnSends
         first.textSize = .extraLarge
+        first.bubbleTimeline = true
         first.appearance = .dark
         first.language = .russian
         first.checksForUpdates = false
@@ -73,6 +76,7 @@ struct LocalSettingsPersistenceTests {
         first.theme = .preset(.dusk)
         #expect(storage.values["MatterMac.notificationsEnabled"] as? Bool == false)
         #expect(storage.values["MatterMac.textSize"] as? String == "extraLarge")
+        #expect(storage.values["MatterMac.bubbleTimeline"] as? Bool == true)
         // Выбор языка дублируется в `AppleLanguages` (пересматривается системой на старте).
         #expect(storage.values["MatterMac.language"] as? String == "russian")
         #expect((storage.values["AppleLanguages"] as? [String]) == ["ru"])
@@ -84,6 +88,7 @@ struct LocalSettingsPersistenceTests {
         #expect(!restored.notificationsEnabled && !restored.showMessagePreview)
         #expect(!restored.playSound && !restored.bounceDockIcon && restored.soundName == sound)
         #expect(restored.sendBehavior == .commandReturnSends && restored.textSize == .extraLarge)
+        #expect(restored.bubbleTimeline)
         #expect(restored.appearance == .dark && restored.language == .russian)
         #expect(!restored.checksForUpdates && restored.updateChannel == .nightly)
         #expect(restored.theme == .preset(.dusk))
@@ -98,6 +103,7 @@ struct LocalSettingsPersistenceTests {
             "MatterMac.showMessagePreview": 0,
             "MatterMac.playSound": [false],
             "MatterMac.bounceDockIcon": 2.5,
+            "MatterMac.bubbleTimeline": "YES",
             "MatterMac.soundName": "Not A System Sound",
             "MatterMac.sendBehavior": "shiftReturnSends",
             "MatterMac.textSize": true,
@@ -110,6 +116,8 @@ struct LocalSettingsPersistenceTests {
         #expect(settings.soundName == SystemSounds.defaultName)
         #expect(settings.sendBehavior == .returnSends && settings.textSize == .standard && settings.appearance == .system)
         #expect(settings.theme == .system)
+        // Строка вместо Bool — только настоящий Bool в расчёт.
+        #expect(!settings.bubbleTimeline)
         #expect(storage.writes == 0)
         // Only real booleans count; a valid value next to invalid ones is kept.
         let mixed = LocalSettings(storage: MemorySettingsStorage([

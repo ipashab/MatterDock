@@ -393,6 +393,10 @@ struct AppearanceSettingsTab: View {
                 .accessibilityIdentifier("textSizePicker")
                 Text("Applies to message text in conversations and threads, on top of the system text size.")
                     .font(.caption).foregroundStyle(.secondary)
+                Toggle("Message bubbles", isOn: $settings.bubbleTimeline)
+                    .accessibilityIdentifier("bubbleTimelineToggle")
+                Text("Messages in Telegram-style bubbles; the classic flat layout is restored by turning this off.")
+                    .font(.caption).foregroundStyle(.secondary)
                 LabeledContent("Message density") { Text("Standard") }
                 Text("A compact message layout is not available yet.")
                     .font(.caption).foregroundStyle(.secondary)

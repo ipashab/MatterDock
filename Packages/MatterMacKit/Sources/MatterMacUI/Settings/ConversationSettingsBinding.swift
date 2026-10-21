@@ -16,6 +16,7 @@ extension ConversationController {
     func applyDisplaySettings() {
         let settings = environment.settings
         if timeline.fontScale != settings.fontScale { timeline.fontScale = settings.fontScale }
+        if timeline.usesBubbleStyle != settings.bubbleTimeline { timeline.usesBubbleStyle = settings.bubbleTimeline }
         let clock = model?.accountSettings?.display.militaryTime
         if timeline.uses24HourClock != clock { timeline.uses24HourClock = clock }
         let behavior: ComposerSendBehavior = settings.sendBehavior == .returnSends ? .returnSends : .commandReturnSends
