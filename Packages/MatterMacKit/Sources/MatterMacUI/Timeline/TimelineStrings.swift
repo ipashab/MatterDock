@@ -114,6 +114,11 @@ enum TimelineStrings {
         count == 1 ? String(localized: "1 reply") : String(localized: "\(count) replies")
     }
 
+    /// Чип треда под пузырём (рендер: «N ответов · Имя: обрывок…»).
+    static func threadChip(_ count: Int, preview: ThreadReplyPreview) -> String {
+        "\(replies(count)) · \(preview.authorName): \(preview.snippet)"
+    }
+
     static func reactions(_ count: Int) -> String {
         count == 1 ? String(localized: "1 reaction") : String(localized: "\(count) reactions")
     }

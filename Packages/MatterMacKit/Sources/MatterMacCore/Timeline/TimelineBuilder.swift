@@ -138,6 +138,9 @@ public enum TimelineBuilder {
         var previous: Post?
         var previousDay: Int?
         var boundaryInserted = false
+        // Превью тредов: один проход по стору на сборку; нужен, только если в окне
+        // есть корни с ответами (рендер: «N ответов · Имя: …»).
+        var threadReplies: [PostID: Post]? = nil
         let unreadCount = window.unreadBoundary.flatMap { boundary in
             window.entries.firstIndex { $0.id == boundary }.map { window.entries.count - $0 }
         } ?? 0
@@ -172,11 +175,21 @@ public enum TimelineBuilder {
                                                                   isThread: isThread)
             var isLastInGroup = !nextContinues
             if isWindowEnd, pendingContinuations.first == true { isLastInGroup = false }
+            var threadPreview: ThreadReplyPreview? = nil
+            if !isThread, post.rootID == nil, post.replyCount > 0 {
+                if threadReplies == nil { threadReplies = latestReplies(store: store) }
+                if let reply = threadReplies?[post.id] {
+                    let replyAuthor = authorPresentation(reply.userID, post: reply, directory: directory,
+                                                         me: context.me, missing: &missing)
+                    threadPreview = ThreadReplyPreview(authorName: replyAuthor.displayName,
+                                                       snippet: threadSnippet(reply.message))
+                }
+            }
             var presentation = postPresentation(
                 post: post, document: stored.document, author: author, isContinuation: isContinuation,
                 showsThreadContext: showsThreadContext, expanded: window.expanded.contains(post.id),
                 context: context, isThread: isThread, directory: directory, missing: &missing,
-                isLastInGroup: isLastInGroup)
+                isLastInGroup: isLastInGroup, threadPreview: threadPreview)
             if context.customEmojiEnabled, let customEmoji {
                 resolveCustomEmoji(in: &presentation, post: post, candidates: stored.customEmojiCandidates,
                                    store: customEmoji, now: context.now.date, missing: &missingEmoji,
@@ -195,6 +208,8 @@ public enum TimelineBuilder {
             hasher.combine(presentation.isSaved)
             hasher.combine(presentation.linkPreview)
             hasher.combine(presentation.customEmoji)
+            hasher.combine(presentation.severity)
+            hasher.combine(presentation.threadPreview)
             items.append(TimelineItem(id: TimelineItemID(.post(post.id)), revision: UInt64(bitPattern: Int64(hasher.finalize())),
                                       content: .post(presentation)))
             previous = post
@@ -317,7 +332,8 @@ public enum TimelineBuilder {
     static func postPresentation(post: Post, document: MessageDocument, author: AuthorPresentation, isContinuation: Bool,
                                  showsThreadContext: Bool, expanded: Bool, context: TimelineBuildContext,
                                  isThread: Bool, directory: DirectoryStore,
-                                 missing: inout Set<UserID>, isLastInGroup: Bool = true) -> PostPresentation {
+                                 missing: inout Set<UserID>, isLastInGroup: Bool = true,
+                                 threadPreview: ThreadReplyPreview? = nil) -> PostPresentation {
         let body: MessageBody
         if post.isDeleted {
             body = .deleted
@@ -355,8 +371,41 @@ public enum TimelineBuilder {
             sendState: nil, actions: actions, permalink: permalink,
             isSaved: directory.savedPosts.contains(post.id), editedAt: post.isEdited ? post.editAt : nil,
             linkPreview: visiblePreview(post, directory: directory, context: context),
-            isLastInGroup: isLastInGroup)
+            isLastInGroup: isLastInGroup, severity: severity(of: post),
+            threadPreview: threadPreview)
     }
+
+    /// Полоса серьёзности читается из `props.severity` (warn/danger/ok) — рендер
+    /// OpenDesign вешает класс `sev-*` на пузырь; клиенту остаётся цвет.
+    static func severity(of post: Post) -> PostSeverity? {
+        PostSeverity(rawValue: post.props.systemContext["severity"] ?? "")
+    }
+
+    /// Последний ответ треда из локального стора канала (сбора превью чипа треда,
+    /// рендер: «N ответов · Имя: обрывок…»). Ответы приходят теми же страницами
+    /// истории и realtime-каналом, что и корни.
+    static func latestReplies(store: PostStore) -> [PostID: Post] {
+        var latest: [PostID: Post] = [:]
+        for entry in store.entries.values where entry.post.rootID != nil {
+            let reply = entry.post
+            guard !reply.isDeleted else { continue }
+            if let current = latest[reply.rootID!] {
+                if reply.createAt > current.createAt { latest[reply.rootID!] = reply }
+            } else {
+                latest[reply.rootID!] = reply
+            }
+        }
+        return latest
+    }
+
+    /// Текст обрывка последнего ответа: без разметки, до 42 символов
+    /// (как в прототипе: `replace(/[*`~#]/g, '').slice(0, 42)`).
+    static func threadSnippet(_ message: String) -> String {
+        let stripped = message.filter { !"*_~#".contains($0) && !($0 == "\n") }
+        return String(stripped.prefix(Self.threadSnippetLimit))
+    }
+
+    static let threadSnippetLimit = 42
 
     /// The link preview to show, honoring `display_settings/link_previews` for website
     /// previews and dropping thumbnails that cannot go through the server's image proxy.

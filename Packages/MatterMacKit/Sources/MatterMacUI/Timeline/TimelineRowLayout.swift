@@ -114,6 +114,9 @@ struct TimelineRowMetrics {
         static let metaSpacing: CGFloat = 2
         /// Зазор между однострочным телом и meta, уместившейся в ту же строку.
         static let inlineMetaGap: CGFloat = 10
+        /// Отступ overlay-пилюли meta от правого и нижнего края пузыря (рендер 10/4).
+        static let metaOverlayInset: CGFloat = 10
+        static let metaOverlayBottomInset: CGFloat = 4
         /// Минимальная ширина текста внутри пузыря: отдельно от широкого flat-минимума,
         /// чтобы короткие «ok»-пузыри оставались компактными.
         static let minimumInnerWidth: CGFloat = 44
@@ -146,6 +149,15 @@ struct TimelineRowMetrics {
         var text = TimelineStrings.time(post.createdAt)
         if post.isEdited { text += " " + TimelineStrings.edited }
         return NSAttributedString(string: text, attributes: [.font: fonts.meta])
+    }
+
+    /// Текст чипа треда под пузырём (рендер: «N ответов · Имя: обрывок…»).
+    /// Один и тот же построитель — для измерения шириной и для ячейки, чтобы
+    /// hug никогда не обрезал чип.
+    func threadChipText(for post: PostPresentation) -> NSAttributedString {
+        let title = post.threadPreview.map { TimelineStrings.threadChip(post.replyCount, preview: $0) }
+            ?? TimelineStrings.replies(post.replyCount)
+        return NSAttributedString(string: title, attributes: [.font: fonts.metaBold])
     }
 
     static func contentWidth(forLayoutWidth width: CGFloat) -> CGFloat {
@@ -268,23 +280,34 @@ struct TimelineRowMetrics {
 
         let padding = Self.BubbleMetrics.horizontalPadding
         let bubbleWidth = inner + 2 * padding
-        let bubbleX: CGFloat = own ? width - Self.horizontalInset - bubbleWidth : Self.bubbleLeading
-        // Полка аксессуаров под пузырём: от Leading edge содержимого пузыря.
-        let accessoryX = bubbleX + padding
-        let accessoryWidth = max(Self.minimumContentWidth,
-                                 min(innerMax, width - Self.horizontalInset - accessoryX))
+        // Рендер OpenDesign: все посты лежат колонкой у правого края; у чужих
+        // справа же стоит их аватар (`.msg-row.out` — row-reverse). Колонка
+        // контента тянется на ≤76% ширины строки; имя и полка — внутри колонки.
+        let avatarRail: CGFloat = own ? 0 : Self.BubbleMetrics.avatarSize + Self.BubbleMetrics.avatarGap
+        let columnRight = width - Self.horizontalInset - avatarRail
+        let columnWidth = innerMax + 2 * padding
+        let columnLeft = columnRight - columnWidth
+        let bubbleX = columnRight - bubbleWidth
+        // Полка аксессуаров под пузырём прижата к правому краю колонки.
+        let accessoryX = columnLeft
+        let accessoryWidth = columnWidth
         var y: CGFloat = headerNeeded ? Self.headerTopPadding : Self.continuationTopPadding
+        let rowTop = y
 
         if post.showsThreadContext {
-            layout.threadContext = CGRect(x: bubbleX, y: y, width: accessoryWidth, height: fonts.metaLineHeight)
+            layout.threadContext = CGRect(x: columnLeft, y: y, width: columnWidth, height: fonts.metaLineHeight)
             y += fonts.metaLineHeight + 2
         }
-        // Имя автора — над пузырём входящего; у своего имени нет.
+        // Имя автора — над пузырём у головного поста чужих (у своего имени нет);
+        // аватар у рендера стоит у каждого чужого поста, справа от колонки.
         if headerNeeded, !own {
-            layout.avatar = CGRect(x: Self.horizontalInset, y: y,
-                                    width: Self.BubbleMetrics.avatarSize, height: Self.BubbleMetrics.avatarSize)
-            layout.header = CGRect(x: bubbleX, y: y, width: accessoryWidth, height: fonts.authorLineHeight)
+            layout.header = CGRect(x: columnLeft, y: y, width: columnWidth, height: fonts.authorLineHeight)
             y += fonts.authorLineHeight + 2
+        }
+        if !own {
+            layout.avatar = CGRect(x: width - Self.horizontalInset - Self.BubbleMetrics.avatarSize,
+                                   y: rowTop + 3,
+                                   width: Self.BubbleMetrics.avatarSize, height: Self.BubbleMetrics.avatarSize)
         }
 
         let bubbleTop = y
@@ -321,28 +344,31 @@ struct TimelineRowMetrics {
 
         var bubble = BubbleLayout(frame: .zero, topLeft: 0, topRight: 0, bottomLeft: 0, bottomRight: 0, meta: nil)
         if metaText != nil {
-            let metaFrameWidth = min(metaWidth + 4, inner)
+            let metaFrameWidth = min(metaWidth + 4, max(inner, metaWidth))
             if inlineMeta {
-                // Время в строке тела: прижато к низу однострочного тела.
+                // Однострочное тело: время в той же строке, прижат к правому краю.
                 bubble.meta = CGRect(x: bubbleX + bubbleWidth - padding - metaFrameWidth,
                                      y: layout.body.maxY - fonts.metaLineHeight,
                                      width: metaFrameWidth, height: fonts.metaLineHeight)
             } else {
-                innerY += Self.BubbleMetrics.metaSpacing
-                bubble.meta = CGRect(x: bubbleX + bubbleWidth - padding - metaFrameWidth, y: innerY,
-                                     width: metaFrameWidth, height: fonts.metaLineHeight)
-                innerY += fonts.metaLineHeight
+                // Многострочники и аттачменты: пилюля-оверлей в правом нижнем углу
+                // пузыря (рендер: `.msg-meta { right:10px; bottom:4px }`), вне потока.
+                bubble.meta = CGRect(
+                    x: bubbleX + bubbleWidth - Self.BubbleMetrics.metaOverlayInset - metaFrameWidth,
+                    y: bubbleTop + (innerY - bubbleTop) + Self.BubbleMetrics.verticalBottomPadding
+                        - Self.BubbleMetrics.metaOverlayBottomInset - fonts.metaLineHeight,
+                    width: metaFrameWidth, height: fonts.metaLineHeight)
             }
         }
 
-        let radius = Self.BubbleMetrics.cornerRadius
-        let tail = Self.BubbleMetrics.tailCornerRadius
+        // Рендер: у всех пузырей одинаковые радиусы — 14/14/14 и хвост 4 в правом
+        // нижнем углу (`.msg-row.out .bubble`). Группировка на радиусы не влияет.
         bubble.frame = CGRect(x: bubbleX, y: bubbleTop, width: bubbleWidth,
                                height: innerY - bubbleTop + Self.BubbleMetrics.verticalBottomPadding)
-        bubble.topLeft = post.isContinuation && !own ? tail : radius
-        bubble.topRight = post.isContinuation && own ? tail : radius
-        bubble.bottomLeft = post.isLastInGroup && !own ? tail : radius
-        bubble.bottomRight = post.isLastInGroup && own ? tail : radius
+        bubble.topLeft = Self.BubbleMetrics.cornerRadius
+        bubble.topRight = Self.BubbleMetrics.cornerRadius
+        bubble.bottomLeft = Self.BubbleMetrics.cornerRadius
+        bubble.bottomRight = Self.BubbleMetrics.tailCornerRadius
         layout.bubble = bubble
         y = bubble.frame.maxY
 
@@ -360,6 +386,7 @@ struct TimelineRowMetrics {
             var lineY = y
             let maxX = accessoryX + accessoryWidth
             let shown = post.reactions.prefix(Self.maximumDisplayedReactions)
+            var chipLineMaxes: [CGFloat: CGFloat] = [:]
             for reaction in shown {
                 let chipWidth = min(reactionChipWidth(reaction, renderer: renderer), accessoryWidth)
                 if x > accessoryX, x + chipWidth > maxX {
@@ -367,6 +394,8 @@ struct TimelineRowMetrics {
                     lineY += chipHeight + Self.chipSpacing
                 }
                 layout.reactions.append(CGRect(x: x, y: lineY, width: chipWidth, height: chipHeight))
+                chipLineMaxes[lineY.rounded()] = max(chipLineMaxes[lineY.rounded()] ?? accessoryX,
+                                                     x + chipWidth)
                 x += chipWidth + Self.chipSpacing
             }
             if post.reactions.count > shown.count {
@@ -378,35 +407,51 @@ struct TimelineRowMetrics {
                     lineY += chipHeight + Self.chipSpacing
                 }
                 layout.reactionOverflow = CGRect(x: x, y: lineY, width: overflowWidth, height: chipHeight)
+                chipLineMaxes[lineY.rounded()] = max(chipLineMaxes[lineY.rounded()] ?? accessoryX,
+                                                     x + overflowWidth)
+            }
+            // Рендер: реакции прижаты к правому краю колонки (`align-items:flex-end`).
+            for index in layout.reactions.indices {
+                let key = layout.reactions[index].minY.rounded()
+                if let lineMax = chipLineMaxes[key] {
+                    layout.reactions[index].origin.x += columnRight - lineMax
+                }
+            }
+            if let overflow = layout.reactionOverflow, let lineMax = chipLineMaxes[overflow.minY.rounded()] {
+                layout.reactionOverflow!.origin.x += columnRight - lineMax
             }
             y = lineY + chipHeight
         }
 
         if post.replyCount > 0 {
             y += Self.componentSpacing
-            layout.replies = CGRect(x: accessoryX, y: y, width: accessoryWidth, height: Self.buttonHeight)
+            // Чип треда с превью последнего ответа (рендер: «N ответов · Имя: …»),
+            // hug-ширины, прижат к правому краю колонки.
+            let chipWidth = min(columnWidth, DrawnText.width(of: threadChipText(for: post)) + 20)
+            layout.replies = CGRect(x: columnRight - chipWidth, y: y, width: chipWidth, height: Self.buttonHeight)
             y += Self.buttonHeight
         }
 
         if let state = post.sendState {
             y += Self.componentSpacing
             var pending = PendingLayout(status: .zero)
-            var textX = accessoryX
+            // Pending-статус прижат к правому краю колонки, hug-ширины.
+            let statusW = min(accessoryWidth, DrawnText.width(of: statusText(for: state)) + 4)
+            let textX = columnRight - statusW
             if Self.showsSpinner(state) {
-                pending.spinner = CGRect(x: accessoryX, y: y + max(0, (fonts.metaLineHeight - Self.spinnerSize) / 2),
+                pending.spinner = CGRect(x: textX - Self.spinnerSize - 6,
+                                         y: y + max(0, (fonts.metaLineHeight - Self.spinnerSize) / 2),
                                           width: Self.spinnerSize, height: Self.spinnerSize)
-                textX += Self.spinnerSize + 6
             }
-            let textWidth = max(Self.minimumContentWidth, accessoryX + accessoryWidth - textX)
-            let textHeight = max(fonts.metaLineHeight, DrawnText.height(of: statusText(for: state), width: textWidth))
-            pending.status = CGRect(x: textX, y: y, width: textWidth, height: textHeight)
+            let textHeight = max(fonts.metaLineHeight, DrawnText.height(of: statusText(for: state), width: statusW))
+            pending.status = CGRect(x: textX, y: y, width: statusW, height: textHeight)
             y += max(textHeight, pending.spinner == nil ? 0 : Self.spinnerSize)
             if Self.offersRetry(state) || Self.offersUploadDiscard(state) {
                 y += 4
                 if Self.offersRetry(state), post.pendingID != nil {
-                    pending.retry = CGRect(x: accessoryX, y: y, width: 0, height: Self.buttonHeight)
+                    pending.retry = CGRect(x: columnRight, y: y, width: 0, height: Self.buttonHeight)
                 }
-                pending.discard = CGRect(x: accessoryX, y: y, width: 0, height: Self.buttonHeight)
+                pending.discard = CGRect(x: columnRight, y: y, width: 0, height: Self.buttonHeight)
                 y += Self.buttonHeight
             }
             layout.pending = pending

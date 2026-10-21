@@ -288,6 +288,8 @@ struct PostPropsWire: Decodable, Sendable {
         "username", "addedUsername", "removedUsername", "old_header", "new_header",
         "old_displayname", "new_displayname", "old_purpose", "new_purpose", "userId", "addedUserId",
         "removedUserId", "deleteBy", "channel_name", "old_channel_name",
+        // Рендер OpenDesign: полоса серьёзности у пузыря читается из props.severity.
+        "severity",
     ]
     /// Keys indicating interactive or plugin content we do not execute natively.
     static let unsupportedKeys: Set<String> = ["app_bindings", "blocks", "mm_blocks_actions", "card"]

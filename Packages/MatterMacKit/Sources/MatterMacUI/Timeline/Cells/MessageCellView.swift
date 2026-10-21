@@ -26,11 +26,10 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
 
     override func draw(_ dirtyRect: NSRect) {
         if let bubble = rowLayout.bubble, let post {
-            // Пузырь (ADR 0041): заливка по стороне автора; серьёзное сообщение
-            // (self-mention) несёт severity-полосу вместо полноширинной заливки
-            // flat-режима.
-            let background = post.author.isCurrentUser ? TimelinePalette.bubbleOutgoingBackground
-                                                       : TimelinePalette.bubbleIncomingBackground
+            // Рендер OpenDesign: все пузыри — исходящего цвета (`--active`);
+            // входящей палитры у рендера нет. Серьёзное сообщение несёт
+            // inset-полосу 3 pt по левому краю (уровни warn/danger/ok).
+            let background = TimelinePalette.bubbleOutgoingBackground
             background.setFill()
             Self.bubblePath(bubble).fill()
             if isRowHovered {
@@ -39,15 +38,19 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
                 TimelinePalette.hoverHighlight.setFill()
                 Self.bubblePath(bubble).fill()
             }
-            if mentionsCurrentUser {
-                // Серьёзное сообщение (self-mention): цветная полоса 3 pt по левому
-                // краю пузыря (рендер `.bubble.sev-*` — inset-полоса, не контур).
+            if let severity = post.severity {
                 NSGraphicsContext.saveGraphicsState()
                 Self.bubblePath(bubble).addClip()
-                TimelinePalette.bubbleSeverityBorder.setFill()
+                TimelinePalette.bubbleSeverity(severity).setFill()
                 NSRect(x: bubble.frame.minX, y: bubble.frame.minY,
                        width: Self.severityBandWidth, height: bubble.frame.height).fill()
                 NSGraphicsContext.restoreGraphicsState()
+            }
+            if let meta = bubble.meta {
+                // Meta-пилюля (рендер: радиус 8, фон — цвет пузыря на 86%): видна
+                // там, где накрывает контент, и растворяется на самом пузыре.
+                TimelinePalette.bubbleOutgoingBackground.withAlphaComponent(0.86).setFill()
+                NSBezierPath(roundedRect: meta, xRadius: 8, yRadius: 8).fill()
             }
         } else if mentionsCurrentUser {
             TimelinePalette.mentionRowHighlight.setFill()
@@ -188,11 +191,26 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
             avatarView.image = resolveImage(request)
         }
         if showsHeader {
-            nameLabel.attributedText = NSAttributedString(string: post.author.displayName, attributes: [
-                .font: fonts.authorName, .foregroundColor: NSColor.labelColor,
-            ])
-            metaLabel.attributedText = headerMeta(post: post, fonts: fonts)
-            metaLabel.toolTip = Self.timeToolTip(post)
+            if layout.bubble != nil {
+                // Рендер: имя автора над пузырём — акцентным цветом, время уводится
+                // в meta-пилюлю (в строке автора его нет), бейдж бота остаётся.
+                let name = NSMutableAttributedString(string: post.author.displayName, attributes: [
+                    .font: fonts.authorName, .foregroundColor: TimelinePalette.bubbleOutgoingLink,
+                ])
+                if post.author.isBot {
+                    name.append(NSAttributedString(string: "  " + TimelineStrings.bot, attributes: [
+                        .font: fonts.metaBold, .foregroundColor: TimelinePalette.bubbleOutgoingSecondary,
+                    ]))
+                }
+                nameLabel.attributedText = name
+                metaLabel.isHidden = true
+            } else {
+                nameLabel.attributedText = NSAttributedString(string: post.author.displayName, attributes: [
+                    .font: fonts.authorName, .foregroundColor: NSColor.labelColor,
+                ])
+                metaLabel.attributedText = headerMeta(post: post, fonts: fonts)
+                metaLabel.toolTip = Self.timeToolTip(post)
+            }
         }
 
         if let frame = layout.threadContext {
@@ -241,7 +259,7 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
         if layout.replies != nil {
             let button = repliesButton ?? makeButton(\.repliesButton, style: .link)
             button.isHidden = false
-            button.configure(title: TimelineStrings.replies(post.replyCount), font: fonts.metaBold)
+            button.configure(title: host.rowMetrics.threadChipText(for: post).string, font: fonts.metaBold)
             button.onPress = { [weak self] in
                 guard let self, let post = self.post, let root = post.rootID ?? post.postID else { return }
                 self.host?.perform(.openThread(root: root))
@@ -319,18 +337,16 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
         view.onPress = { [weak self] in self?.host?.perform(.openLink(link)) }
     }
 
-    /// Meta-строка в хвосте пузыря (ADR 0041): время ± «(edited)»; цвет — по
-    /// поверхности (исходящий — светлый токен, входящий — системный secondary).
+    /// Meta-пилюля в хвосте пузыря: время ± «изм.»; текст — светлый токен исходящего
+    /// (все пузыри у рендера одного цвета), подложку-пилюлю рисует draw(_:).
     private func configureBubbleMeta(post: PostPresentation, host: any TimelineCellHost) {
         guard let frame = rowLayout.bubble?.meta else {
             bubbleMetaLabel?.isHidden = true
             return
         }
         let label = bubbleMetaLabel ?? makeLabel(\.bubbleMetaLabel)
-        let own = post.author.isCurrentUser
         let text = NSMutableAttributedString(attributedString: host.rowMetrics.bubbleMetaText(for: post))
-        text.addAttribute(.foregroundColor, value: own ? TimelinePalette.bubbleOutgoingSecondary
-                                                        : NSColor.secondaryLabelColor,
+        text.addAttribute(.foregroundColor, value: TimelinePalette.bubbleOutgoingSecondary,
                           range: NSRange(location: 0, length: text.length))
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .right

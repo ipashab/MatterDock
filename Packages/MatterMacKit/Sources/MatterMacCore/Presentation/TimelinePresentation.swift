@@ -192,6 +192,26 @@ public struct PostActionHints: Hashable, Sendable {
     public static let none = PostActionHints()
 }
 
+/// Серьёзность алерта, проставленная источником поста в `props.severity`
+/// (рендер OpenDesign: `.bubble.sev-*` — полоса у пузыря). Контент, не бренд.
+public enum PostSeverity: String, Hashable, Sendable {
+    case warn
+    case danger
+    case ok
+}
+
+/// Хвост треда для чипа под пузырём (рендер: «N ответов · Имя: обрывок…»).
+/// Собирается из локальных данных канала; источник — пайплайн, не UI.
+public struct ThreadReplyPreview: Hashable, Sendable {
+    public var authorName: String
+    public var snippet: String
+
+    public init(authorName: String, snippet: String) {
+        self.authorName = authorName
+        self.snippet = snippet
+    }
+}
+
 public struct PostPresentation: Hashable, Sendable {
     /// Confirmed server post ID; `nil` while a send is pending.
     public let postID: PostID?
@@ -224,6 +244,10 @@ public struct PostPresentation: Hashable, Sendable {
     /// Server-provided link preview. `image` is `nil` unless it can be fetched through
     /// the server's image proxy.
     public let linkPreview: LinkPreview?
+    /// Серьёзность алерта из `props.severity` (рендер OpenDesign: полоса у пузыря).
+    public let severity: PostSeverity?
+    /// Последний ответ треда для чипа под пузырём (рендер: «N ответов · Имя: …»).
+    public let threadPreview: ThreadReplyPreview?
     /// Resolved custom emoji used in `body`: lowercase name → server emoji id. Names
     /// absent here render as `:name:` (unknown, not yet resolved, or disabled).
     public var customEmoji: [String: String] = [:]
@@ -233,7 +257,8 @@ public struct PostPresentation: Hashable, Sendable {
                 body: MessageBody, isEdited: Bool, isPinned: Bool, files: [FileInfo], reactions: [ReactionGroup],
                 replyCount: Int, showsThreadContext: Bool, sendState: SendState?, actions: PostActionHints,
                 permalink: URL?, isSaved: Bool = false, editedAt: MattermostTimestamp? = nil,
-                linkPreview: LinkPreview? = nil, isLastInGroup: Bool = true) {
+                linkPreview: LinkPreview? = nil, isLastInGroup: Bool = true,
+                severity: PostSeverity? = nil, threadPreview: ThreadReplyPreview? = nil) {
         self.postID = postID
         self.pendingID = pendingID
         self.channelID = channelID
@@ -255,6 +280,8 @@ public struct PostPresentation: Hashable, Sendable {
         self.isSaved = isSaved
         self.editedAt = editedAt
         self.linkPreview = linkPreview
+        self.severity = severity
+        self.threadPreview = threadPreview
     }
 }
 

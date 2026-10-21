@@ -195,6 +195,42 @@ struct TimelineBuilderInteractionTests {
 
     func posts(_ output: TimelineBuilder.Output) -> [PostPresentation] { output.items.compactMap(\.post) }
 
+    @Test func severityFromPropsReachesPresentation() {
+        var post = CoreFixtures.post(1, channel: channel.id)
+        post.props.systemContext["severity"] = "danger"
+        #expect(posts(build([post]))[0].severity == .danger, "props.severity доходит до презентации")
+        var warnSide = CoreFixtures.post(2, channel: channel.id)
+        warnSide.props.systemContext["severity"] = "warn"
+        #expect(posts(build([warnSide]))[0].severity == .warn)
+        var unknown = CoreFixtures.post(3, channel: channel.id)
+        unknown.props.systemContext["severity"] = "critical"
+        #expect(posts(build([unknown]))[0].severity == nil, "неизвестный уровень не рисуется")
+        #expect(posts(build([CoreFixtures.post(4, channel: channel.id)]))[0].severity == nil)
+    }
+
+    @Test func threadChipPreviewCarriesLatestReply() throws {
+        var root = CoreFixtures.post(1, channel: channel.id, user: CoreFixtures.me.id)
+        root.replyCount = 2
+        let early = CoreFixtures.post(2, channel: channel.id, user: CoreFixtures.bob.id, rootID: root.id)
+        var late = CoreFixtures.post(3, channel: channel.id, user: carol.id, rootID: root.id)
+        late.message = "*план*\nвыкатим в пятницу #release"
+        var directory = DirectoryStore(budget: .standard)
+        directory.pin(CoreFixtures.me)
+        directory.upsertUser(CoreFixtures.bob)
+        directory.upsertUser(carol)
+        let built = posts(build([root, early, late], directory: directory))
+        let rootRow = try #require(built.first { $0.postID == root.id })
+        #expect(rootRow.threadPreview?.authorName == "carol", "имя автора последнего ответа")
+        #expect(rootRow.threadPreview?.snippet == "планвыкатим в пятницу release",
+                "обрывок без разметки (как в прототипе: перевод строки тоже снят)")
+        // Скан берёт самый свежий ответ, не первый.
+        var newest = CoreFixtures.post(4, channel: channel.id, user: CoreFixtures.bob.id,
+                                       createAt: 1_700_000_999_000, rootID: root.id)
+        newest.message = "новее всех"
+        #expect(posts(build([root, early, late, newest], directory: directory)).first { $0.postID == root.id }?
+            .threadPreview?.authorName == "bob")
+    }
+
     @Test func reactionGroupsNameReactorsYouFirstAndReportUnknownUsers() {
         var post = CoreFixtures.post(1, channel: channel.id)
         post.reactions = [

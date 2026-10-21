@@ -1,4 +1,5 @@
 public import AppKit
+import MatterMacCore
 
 /// The appearance variant a rendered attributed string was produced for. Part of the
 /// render-cache key (SPEC §13): dark/light and increased contrast.
@@ -146,10 +147,14 @@ nonisolated enum TimelinePalette {
     static let bubbleOutgoingQuoteBar = dynamic { _, _ in
         NSColor.white.withAlphaComponent(0.45)
     }
-    /// Рамка serious-сообщения (self-mention) на пузыре; цвет — как у полосы
-    /// полноширинной подсветки в flat-режиме.
-    static let bubbleSeverityBorder = dynamic { _, highContrast in
-        highContrast ? NSColor.systemOrange : NSColor.systemYellow
+    /// Полоса серьёзности у пузыря (рендер `.bubble.sev-*`, 3 pt inset).
+    /// Контент, не бренд: цвет — из брендовой палитры прототипа.
+    static func bubbleSeverity(_ severity: PostSeverity) -> NSColor {
+        switch severity {
+        case .danger: dynamic { _, _ in NSColor(srgbRed: 229 / 255, green: 86 / 255, blue: 109 / 255, alpha: 1) }
+        case .warn: dynamic { _, _ in NSColor(srgbRed: 255 / 255, green: 183 / 255, blue: 55 / 255, alpha: 1) }
+        case .ok: dynamic { _, _ in NSColor(srgbRed: 77 / 255, green: 205 / 255, blue: 94 / 255, alpha: 1) }
+        }
     }
 
     /// Stable avatar placeholder tint derived from the user id (no randomness).

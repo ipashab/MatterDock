@@ -38,21 +38,26 @@ struct BubbleLayoutTests {
         let incoming = metrics.messageLayout(for: post(own: false), width: width, bodyHeight: 20,
                                              renderer: MessageRenderer(), style: .bubble)
         let bubble = incoming.bubble!
-        // Чужое — слева, с полкой аватара 38 (рендер: avatar-38).
-        #expect(bubble.frame.minX == TimelineRowMetrics.bubbleLeading)
-        #expect(incoming.avatar == CGRect(x: TimelineRowMetrics.horizontalInset, y: incoming.avatar!.minY,
-                                          width: TimelineRowMetrics.BubbleMetrics.avatarSize,
-                                          height: TimelineRowMetrics.BubbleMetrics.avatarSize))
+        // Рендер OpenDesign: все посты — исходящая колонка у правого края
+        // (`.msg-row.out`), у чужих справа стоит их аватар 38, имя — над пузырём.
+        let rail = width - TimelineRowMetrics.horizontalInset
+        #expect(abs(bubble.frame.maxX - (rail - TimelineRowMetrics.BubbleMetrics.avatarSize
+            - TimelineRowMetrics.BubbleMetrics.avatarGap)) < 1,
+                "чужой пузырь перед аватаром справа")
+        #expect(abs(incoming.avatar!.maxX - rail) < 1 && incoming.avatar!.width == 38)
+        #expect(incoming.header != nil, "у головного чужого поста есть имя автора")
         let own = metrics.messageLayout(for: post(own: true), width: width, bodyHeight: 20,
                                         renderer: MessageRenderer(), style: .bubble).bubble!
         #expect(own.frame.maxX == width - TimelineRowMetrics.horizontalInset)
-        // Чужое одиночное: все углы полные, хвост в левом нижнем (радиусы 14/4).
-        #expect(bubble.topLeft == 14 && bubble.bottomLeft == 4 && bubble.bottomRight == 14)
-        #expect(own.topLeft == 14 && own.bottomRight == 4 && own.bottomLeft == 14)
-        // Continuation внутри группы: сплюснут верх со стороны автора, meta нет.
+        #expect(own.frame.minY < bubble.frame.minY, "свой пост без имени — пузырь начинается выше")
+        // Радиусы у рендера постоянны: 14/14/14 и хвост 4 в правом нижнем углу,
+        // у всех постов и вне зависимости от группировки.
+        #expect(bubble.topLeft == 14 && bubble.topRight == 14 && bubble.bottomLeft == 14 && bubble.bottomRight == 4)
+        #expect(own.topLeft == 14 && own.topRight == 14 && own.bottomLeft == 14 && own.bottomRight == 4)
+        // Continuation внутри группы: та же колонка, meta нет.
         let continued = metrics.messageLayout(for: post(own: true, continuation: true, last: false), width: width,
                                                bodyHeight: 20, renderer: MessageRenderer(), style: .bubble).bubble!
-        #expect(continued.topRight == 4 && continued.bottomRight == 14)
+        #expect(continued.topRight == 14 && continued.bottomRight == 4)
         #expect(continued.meta == nil, "время покажет hover, meta только у хвоста")
     }
 
@@ -102,21 +107,26 @@ struct BubbleLayoutTests {
                 "одна строка с inline meta без отдельной meta-строки")
     }
 
-    @Test func multiLineMetaKeepsItsOwnLine() {
-        // Многострочное тело держит meta ниже — отдельной строкой (ADR 0041 §4).
+    @Test func multiLineMetaOverlaysLastLine() {
+        // Многострочный пузырь: meta-пилюля — оверлей в правом нижнем углу
+        // (рендер `.msg-meta { right:10px; bottom:4px }`), может накрывать текст.
         let layout = metrics.messageLayout(for: post(own: true), width: 400, bodyHeight: 3 * metrics.fonts.bodyLineHeight,
-                                           bodyUsedWidth: 30, renderer: MessageRenderer(), style: .bubble)
+                                           bodyUsedWidth: 200, renderer: MessageRenderer(), style: .bubble)
         let meta = layout.bubble!.meta!
-        #expect(meta.minY >= layout.body.maxY, "meta многострочника ниже тела")
-        #expect(abs(meta.maxY - (layout.bubble!.frame.maxY
-            - TimelineRowMetrics.BubbleMetrics.verticalBottomPadding)) < 1)
+        let bubble = layout.bubble!.frame
+        #expect(abs((bubble.maxX - meta.maxX) - TimelineRowMetrics.BubbleMetrics.metaOverlayInset) < 1,
+                "пилюля на 10 pt правее края")
+        #expect(abs((bubble.maxY - meta.maxY) - TimelineRowMetrics.BubbleMetrics.metaOverlayBottomInset) < 1,
+                "пилюля на 4 pt выше дна")
+        #expect(meta.minY >= bubble.minY, "пилюля внутри пузыря")
     }
 
     @Test func lastInGroupGetsMetaInsideBubble() {
         let last = metrics.messageLayout(for: post(own: true, edited: true), width: 400, bodyHeight: 20,
                                          bodyUsedWidth: 30, renderer: MessageRenderer(), style: .bubble)
         #expect(last.bubble!.meta != nil, "хвост группы несёт meta")
-        #expect(last.bubble!.meta!.maxX <= last.bubble!.frame.maxX - TimelineRowMetrics.BubbleMetrics.horizontalPadding)
+        #expect(abs((last.bubble!.frame.maxX - last.bubble!.meta!.maxX)
+            - TimelineRowMetrics.BubbleMetrics.metaOverlayInset) < 1)
         // У текста meta есть "(edited)" и время — проверяем строку.
         let text = metrics.bubbleMetaText(for: post(own: true, edited: true))
         #expect(text.string.contains(TimelineStrings.edited))
@@ -318,12 +328,14 @@ struct BubbleCellTests {
         #expect(tail.hoverTimeLabel?.isHidden != false, "meta уже в пузыре — gutter не нужен")
     }
 
-    @Test func incomingMetaUsesSecondaryColor() throws {
+    @Test func incomingMetaAlsoUsesOutgoingToken() throws {
+        // Рендер OpenDesign: все пузыри одного цвета — meta везде исходящий токен.
         let cell = configureCell(makePost(own: false))
         let meta = try #require(cell.bubbleMetaLabel)
         #expect(meta.attributedText.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
-                === NSColor.secondaryLabelColor, "входящий meta — системный secondary")
-        #expect(!cell.nameLabel.isHidden, "имя автора над входящим пузырём")
+                === TimelinePalette.bubbleOutgoingSecondary, "чужой meta — светлый токен исходящего")
+        #expect(!cell.nameLabel.isHidden, "имя автора над чужим пузырём")
+        #expect(cell.metaLabel.isHidden, "время уходит в meta-пилюлю, в строке автора его нет")
     }
 
     @Test func resetClearsBubbleMetaOnReuse() throws {

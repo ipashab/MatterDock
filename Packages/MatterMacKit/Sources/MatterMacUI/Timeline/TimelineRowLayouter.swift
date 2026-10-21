@@ -65,7 +65,9 @@ final class TimelineRowLayouter {
     private func rendered(_ post: PostPresentation) -> NSAttributedString {
         let surface: RenderSurface
         if style == .bubble, case .document = post.body {
-            surface = post.author.isCurrentUser ? .outgoing : .incoming
+            // Рендер OpenDesign: все пузыри одного цвета — и вся поверхность текста
+            // исходящая (светлый текст на синем) у чужих постов тоже.
+            surface = .outgoing
         } else {
             surface = .plain
         }
