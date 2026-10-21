@@ -46,8 +46,8 @@ struct LocalSettingsPersistenceTests {
             #expect(settings.soundName == SystemSounds.defaultName)
             #expect(settings.sendBehavior == .returnSends && settings.textSize == .standard && settings.appearance == .system)
             #expect(settings.language == .system)
-            // Пузыри выключены по умолчанию (ADR 0041, миграция).
-            #expect(!settings.bubbleTimeline)
+            // Интерфейс рендера OpenDesign — пузыри включены по умолчанию (ADR 0042).
+            #expect(settings.bubbleTimeline)
             // MatterDock: самообновления выключены по умолчанию (форк распространяется пересборкой).
             #expect(!settings.checksForUpdates && settings.updateChannel == nil)
             #expect(settings.theme == .system)
@@ -116,8 +116,8 @@ struct LocalSettingsPersistenceTests {
         #expect(settings.soundName == SystemSounds.defaultName)
         #expect(settings.sendBehavior == .returnSends && settings.textSize == .standard && settings.appearance == .system)
         #expect(settings.theme == .system)
-        // Строка вместо Bool — только настоящий Bool в расчёт.
-        #expect(!settings.bubbleTimeline)
+        // Строка вместо Bool — только настоящий Bool в расчёт (дефолт — включено, ADR 0042).
+        #expect(settings.bubbleTimeline)
         #expect(storage.writes == 0)
         // Only real booleans count; a valid value next to invalid ones is kept.
         let mixed = LocalSettings(storage: MemorySettingsStorage([

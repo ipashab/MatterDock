@@ -90,9 +90,10 @@ public final class LocalSettings {
     public var textSize: TextSize = .standard {
         didSet { save(.textSize, textSize.rawValue) }
     }
-    /// Сообщения в Telegram-стиле — пузырями (ADR 0041). Выключено на время
-    /// миграции; переключение прогоняет сброс высот, как смена размера текста.
-    public var bubbleTimeline = false {
+    /// Сообщения из рендера OpenDesign (ADR 0042): интерфейс 1:1 — пузыри
+    /// включены по умолчанию, альтернативного вида больше нет. Переключение
+    /// прогоняет сброс высот, как смена размера текста.
+    public var bubbleTimeline = true {
         didSet { save(.bubbleTimeline, bubbleTimeline) }
     }
     public var appearance: Appearance = .system {
