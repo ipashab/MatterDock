@@ -35,6 +35,18 @@ struct PendingLayout: Equatable {
     var discard: CGRect?
 }
 
+/// Геометрия пузыря (ADR 0041): контейнер-фон с индивидуальными радиусами углов
+/// и meta-строка (время ± «(edited)») внутри у хвоста.
+struct BubbleLayout: Equatable {
+    var frame: CGRect
+    var topLeft: CGFloat
+    var topRight: CGFloat
+    var bottomLeft: CGFloat
+    var bottomRight: CGFloat
+    /// Строка meta внутри пузыря; nil — не хвост группы (время покажет hover).
+    var meta: CGRect?
+}
+
 struct MessageRowLayout: Equatable {
     var height: CGFloat = 0
     var avatar: CGRect?
@@ -52,6 +64,8 @@ struct MessageRowLayout: Equatable {
     var reactionOverflow: CGRect?
     var replies: CGRect?
     var pending: PendingLayout?
+    /// Пузырь (ADR 0041): nil — flat-сетка или сервисная строка.
+    var bubble: BubbleLayout?
 }
 
 struct SeparatorRowLayout: Equatable {
@@ -87,6 +101,38 @@ struct TimelineRowMetrics {
 
     /// Tall enough for an Apple Color Emoji line (taller than the text line) plus insets.
     var reactionChipHeight: CGFloat { ceil(max(fonts.bodyLineHeight, fonts.emojiLineHeight) + 6) }
+
+    // Пузыри (ADR 0041 §3). Константы прототипа: скругление 12 pt, хвост 4 pt.
+    enum BubbleMetrics {
+        static let cornerRadius: CGFloat = 12
+        static let tailCornerRadius: CGFloat = 4
+        static let horizontalPadding: CGFloat = 10
+        static let verticalPadding: CGFloat = 6
+        /// Зазор между последним контентом пузыря и meta-строкой.
+        static let metaSpacing: CGFloat = 2
+        /// Минимальная ширина текста внутри пузыря: отдельно от широкого flat-минимума,
+        /// чтобы короткие «ok»-пузыри оставались компактными.
+        static let minimumInnerWidth: CGFloat = 44
+    }
+
+    /// Ширина текстового содержимого пузыря при полной развёртке (аватар и
+    /// горизонтальные отступы учтены; свою сторону не сжимает аватар). Текст
+    /// измеряется ровно на этой ширине, поэтому hug никогда не перевёрстывает
+    /// строки.
+    func bubbleInnerWidth(for post: PostPresentation, layoutWidth: CGFloat) -> CGFloat {
+        let available = post.author.isCurrentUser
+            ? layoutWidth - 2 * Self.horizontalInset
+            : Self.contentWidth(forLayoutWidth: layoutWidth)
+        return max(Self.minimumContentWidth, available - 2 * BubbleMetrics.horizontalPadding)
+    }
+
+    /// Текст meta-строки в хвосте пузыря: время ± «(edited)» (ADR 0041 §4).
+    /// Цвет ячейка подставляет по поверхности пузыря; измерению нужен шрифт.
+    func bubbleMetaText(for post: PostPresentation) -> NSAttributedString {
+        var text = TimelineStrings.time(post.createdAt)
+        if post.isEdited { text += " " + TimelineStrings.edited }
+        return NSAttributedString(string: text, attributes: [.font: fonts.meta])
+    }
 
     static func contentWidth(forLayoutWidth width: CGFloat) -> CGFloat {
         max(minimumContentWidth, width - contentLeading - horizontalInset)
@@ -152,15 +198,191 @@ struct TimelineRowMetrics {
     /// Header, avatar, attachments, reactions, and accessories around a body of the
     /// given height. Deterministic: same inputs produce identical frames.
     /// `style` переключает сетку (ADR 0041): `.flat` — прежняя плоская раскладка;
-    /// `.bubble` — пузыри (реализация — следующие шаги миграции; до готовности
-    /// ветки геометрия .bubble совпадает с .flat, что оставляет оба стиля
-    /// корректными и не меняет flat-поведение).
+    /// `.bubble` — пузырь вокруг тела/превью/аттачментов с meta в хвосте.
+    /// `bodyUsedWidth` — занятая текстом ширина (точная мера), для hug-ширины
+    /// пузыря; 0 в оценочном проходе.
     func messageLayout(for post: PostPresentation, width: CGFloat, bodyHeight: CGFloat,
-                       renderer: MessageRenderer, exact: Bool = true, style: RowStyle = .flat) -> MessageRowLayout {
+                       bodyUsedWidth: CGFloat = 0, renderer: MessageRenderer, exact: Bool = true,
+                       style: RowStyle = .flat) -> MessageRowLayout {
         switch style {
-        case .flat, .bubble:
+        case .flat:
+            return flatMessageLayout(for: post, width: width, bodyHeight: bodyHeight, renderer: renderer, exact: exact)
+        case .bubble:
+            return bubbleMessageLayout(for: post, width: width, bodyHeight: bodyHeight, bodyUsedWidth: bodyUsedWidth,
+                                       renderer: renderer, exact: exact)
+        }
+    }
+
+    /// Telegram-style пузырь (ADR 0041): контейнер обнимает тело, превью ссылки и
+    /// аттачменты; meta — отдельной строкой в хвосте; реакции, чип треда, кнопки и
+    /// pending-статус — под пузырём. Своё — справа без аватара, чужое — слева с
+    /// аватаром и именем над пузырём. Сервисные строки (system/deleted/unsupported)
+    /// не заворачиваются — остаются плоской сеткой.
+    private func bubbleMessageLayout(for post: PostPresentation, width: CGFloat, bodyHeight: CGFloat,
+                                     bodyUsedWidth: CGFloat, renderer: MessageRenderer, exact: Bool) -> MessageRowLayout {
+        switch post.body {
+        case .document: break
+        default:
             return flatMessageLayout(for: post, width: width, bodyHeight: bodyHeight, renderer: renderer, exact: exact)
         }
+        var layout = MessageRowLayout()
+        let own = post.author.isCurrentUser
+        let headerNeeded = !post.isContinuation
+        let innerMax = bubbleInnerWidth(for: post, layoutWidth: width)
+
+        // Hug: в точном проходе короткий текст сжимает пузырь. Большие сущности
+        // (превью, файлы) и pass оценки используют полную ширину.
+        var inner = innerMax
+        if exact, post.linkPreview == nil, post.files.isEmpty {
+            inner = max(min(bodyUsedWidth, innerMax), Self.BubbleMetrics.minimumInnerWidth)
+        }
+        if post.isLastInGroup {
+            let metaWidth = DrawnText.width(of: bubbleMetaText(for: post))
+            inner = max(inner, min(metaWidth, innerMax))
+        }
+
+        let padding = Self.BubbleMetrics.horizontalPadding
+        let bubbleWidth = inner + 2 * padding
+        let bubbleX: CGFloat = own ? width - Self.horizontalInset - bubbleWidth : Self.contentLeading
+        // Полка аксессуаров под пузырём: от Leading edge содержимого пузыря.
+        let accessoryX = bubbleX + padding
+        let accessoryWidth = max(Self.minimumContentWidth,
+                                 min(innerMax, width - Self.horizontalInset - accessoryX))
+        var y: CGFloat = headerNeeded ? Self.headerTopPadding : Self.continuationTopPadding
+
+        if post.showsThreadContext {
+            layout.threadContext = CGRect(x: bubbleX, y: y, width: accessoryWidth, height: fonts.metaLineHeight)
+            y += fonts.metaLineHeight + 2
+        }
+        // Имя автора — над пузырём входящего; у своего имени нет.
+        if headerNeeded, !own {
+            layout.avatar = CGRect(x: Self.horizontalInset, y: y, width: Self.avatarSize, height: Self.avatarSize)
+            layout.header = CGRect(x: bubbleX, y: y, width: accessoryWidth, height: fonts.authorLineHeight)
+            y += fonts.authorLineHeight + 2
+        }
+
+        let bubbleTop = y
+        var innerY = bubbleTop + Self.BubbleMetrics.verticalPadding
+        layout.body = CGRect(x: bubbleX + padding, y: innerY, width: inner, height: bodyHeight)
+        innerY += bodyHeight
+
+        if let preview = post.linkPreview {
+            innerY += Self.componentSpacing
+            let card = linkPreviewLayout(preview, origin: CGPoint(x: bubbleX + padding, y: innerY),
+                                         contentWidth: inner, exact: exact)
+            layout.linkPreview = card
+            innerY += card.frame.height
+        }
+
+        let files = post.files.prefix(Self.maximumDisplayedFiles)
+        for file in files {
+            innerY += Self.componentSpacing
+            if Self.showsThumbnail(file) {
+                let size = Self.thumbnailSize(for: file, contentWidth: inner)
+                layout.attachments.append(CGRect(x: bubbleX + padding, y: innerY, width: size.width, height: size.height))
+                innerY += size.height
+            } else {
+                let chipWidth = min(inner, Self.fileChipMaximumWidth)
+                layout.attachments.append(CGRect(x: bubbleX + padding, y: innerY, width: chipWidth, height: Self.fileChipHeight))
+                innerY += Self.fileChipHeight
+            }
+        }
+        if post.files.count > files.count {
+            innerY += Self.componentSpacing
+            layout.attachmentOverflow = CGRect(x: bubbleX + padding, y: innerY, width: inner, height: fonts.metaLineHeight)
+            innerY += fonts.metaLineHeight
+        }
+
+        var bubble = BubbleLayout(frame: .zero, topLeft: 0, topRight: 0, bottomLeft: 0, bottomRight: 0, meta: nil)
+        if post.isLastInGroup {
+            innerY += Self.BubbleMetrics.metaSpacing
+            let metaWidth = min(DrawnText.width(of: bubbleMetaText(for: post)) + 4, inner)
+            bubble.meta = CGRect(x: bubbleX + bubbleWidth - padding - metaWidth, y: innerY,
+                                 width: metaWidth, height: fonts.metaLineHeight)
+            innerY += fonts.metaLineHeight
+        }
+
+        let radius = Self.BubbleMetrics.cornerRadius
+        let tail = Self.BubbleMetrics.tailCornerRadius
+        bubble.frame = CGRect(x: bubbleX, y: bubbleTop, width: bubbleWidth,
+                               height: innerY - bubbleTop + Self.BubbleMetrics.verticalPadding)
+        bubble.topLeft = post.isContinuation && !own ? tail : radius
+        bubble.topRight = post.isContinuation && own ? tail : radius
+        bubble.bottomLeft = post.isLastInGroup && !own ? tail : radius
+        bubble.bottomRight = post.isLastInGroup && own ? tail : radius
+        layout.bubble = bubble
+        y = bubble.frame.maxY
+
+        // Полка под пузырём: «Показать полностью», реакции, чип треда, pending.
+        if case .document(_, true) = post.body {
+            y += Self.componentSpacing
+            layout.showMore = CGRect(x: accessoryX, y: y, width: accessoryWidth, height: Self.buttonHeight)
+            y += Self.buttonHeight
+        }
+
+        if !post.reactions.isEmpty {
+            y += Self.componentSpacing
+            let chipHeight = reactionChipHeight
+            var x = accessoryX
+            var lineY = y
+            let maxX = accessoryX + accessoryWidth
+            let shown = post.reactions.prefix(Self.maximumDisplayedReactions)
+            for reaction in shown {
+                let chipWidth = min(reactionChipWidth(reaction, renderer: renderer), accessoryWidth)
+                if x > accessoryX, x + chipWidth > maxX {
+                    x = accessoryX
+                    lineY += chipHeight + Self.chipSpacing
+                }
+                layout.reactions.append(CGRect(x: x, y: lineY, width: chipWidth, height: chipHeight))
+                x += chipWidth + Self.chipSpacing
+            }
+            if post.reactions.count > shown.count {
+                let text = NSAttributedString(string: TimelineStrings.moreReactions(post.reactions.count - shown.count),
+                                              attributes: [.font: fonts.meta])
+                let overflowWidth = DrawnText.width(of: text) + 8
+                if x > accessoryX, x + overflowWidth > maxX {
+                    x = accessoryX
+                    lineY += chipHeight + Self.chipSpacing
+                }
+                layout.reactionOverflow = CGRect(x: x, y: lineY, width: overflowWidth, height: chipHeight)
+            }
+            y = lineY + chipHeight
+        }
+
+        if post.replyCount > 0 {
+            y += Self.componentSpacing
+            layout.replies = CGRect(x: accessoryX, y: y, width: accessoryWidth, height: Self.buttonHeight)
+            y += Self.buttonHeight
+        }
+
+        if let state = post.sendState {
+            y += Self.componentSpacing
+            var pending = PendingLayout(status: .zero)
+            var textX = accessoryX
+            if Self.showsSpinner(state) {
+                pending.spinner = CGRect(x: accessoryX, y: y + max(0, (fonts.metaLineHeight - Self.spinnerSize) / 2),
+                                          width: Self.spinnerSize, height: Self.spinnerSize)
+                textX += Self.spinnerSize + 6
+            }
+            let textWidth = max(Self.minimumContentWidth, accessoryX + accessoryWidth - textX)
+            let textHeight = max(fonts.metaLineHeight, DrawnText.height(of: statusText(for: state), width: textWidth))
+            pending.status = CGRect(x: textX, y: y, width: textWidth, height: textHeight)
+            y += max(textHeight, pending.spinner == nil ? 0 : Self.spinnerSize)
+            if Self.offersRetry(state) || Self.offersUploadDiscard(state) {
+                y += 4
+                if Self.offersRetry(state), post.pendingID != nil {
+                    pending.retry = CGRect(x: accessoryX, y: y, width: 0, height: Self.buttonHeight)
+                }
+                pending.discard = CGRect(x: accessoryX, y: y, width: 0, height: Self.buttonHeight)
+                y += Self.buttonHeight
+            }
+            layout.pending = pending
+        }
+
+        y += Self.bottomPadding
+        if let avatar = layout.avatar { y = max(y, avatar.maxY + Self.bottomPadding) }
+        layout.height = ceil(y)
+        return layout
     }
 
     private func flatMessageLayout(for post: PostPresentation, width: CGFloat, bodyHeight: CGFloat,

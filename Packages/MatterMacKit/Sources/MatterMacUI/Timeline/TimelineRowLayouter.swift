@@ -108,10 +108,21 @@ final class TimelineRowLayouter {
         case .post(let post):
             counters.measurements += 1
             let text = bodyText(for: item, post: post)
-            let contentWidth = TimelineRowMetrics.contentWidth(forLayoutWidth: width)
-            let bodyHeight = measurer.height(of: text, width: contentWidth)
+            var bodyHeight: CGFloat
+            var bodyUsedWidth: CGFloat = 0
+            var bubbled = false
+            if style == .bubble, case .document = post.body { bubbled = true }
+            if bubbled {
+                // Пузырь (ADR 0041): текст измеряется на своей территории —
+                // hug не перевёрстывает строки.
+                let measured = measurer.measure(of: text, width: metrics.bubbleInnerWidth(for: post, layoutWidth: width))
+                bodyHeight = measured.height
+                bodyUsedWidth = measured.usedWidth
+            } else {
+                bodyHeight = measurer.height(of: text, width: TimelineRowMetrics.contentWidth(forLayoutWidth: width))
+            }
             layout = .message(metrics.messageLayout(for: post, width: width, bodyHeight: bodyHeight,
-                                                    renderer: renderer, style: style))
+                                                    bodyUsedWidth: bodyUsedWidth, renderer: renderer, style: style))
         default:
             layout = .separator(separatorLayout(for: item, width: width))
         }
@@ -132,8 +143,11 @@ final class TimelineRowLayouter {
         switch item.content {
         case .post(let post):
             counters.estimates += 1
-            let contentWidth = TimelineRowMetrics.contentWidth(forLayoutWidth: width)
-            let bodyHeight = metrics.estimatedBodyHeight(post.body, contentWidth: contentWidth, budget: budget)
+            // Оценка на территории пузыря, если стиль включён (ADR 0041); точный
+            // проход сразу вслед перезапишет высоту.
+            let measureWidth = style == .bubble ? metrics.bubbleInnerWidth(for: post, layoutWidth: width)
+                                                : TimelineRowMetrics.contentWidth(forLayoutWidth: width)
+            let bodyHeight = metrics.estimatedBodyHeight(post.body, contentWidth: measureWidth, budget: budget)
             return metrics.messageLayout(for: post, width: width, bodyHeight: bodyHeight, renderer: renderer,
                                          exact: false, style: style).height
         default:
