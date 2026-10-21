@@ -148,7 +148,15 @@ extension TimelineViewController {
         }
         let width = hoverBar.preferredWidth
         let height = HoverActionBar.height
-        let x = max(clip.minX + 4, rowRect.maxX - width - TimelineRowMetrics.horizontalInset)
+        // В пузырном режиме бар висит над краем пузыря, а не у края строки (ADR 0041).
+        let bubbleMaxX: CGFloat?
+        if let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? MessageCellView,
+           let bubble = cell.rowLayout.bubble {
+            bubbleMaxX = view.convert(bubble.frame, from: cell).maxX
+        } else {
+            bubbleMaxX = nil
+        }
+        let x = Self.hoverBarX(rowMaxX: rowRect.maxX, bubbleMaxX: bubbleMaxX, barWidth: width, clip: clip)
         // Straddle the row's top edge (like the official client), kept inside the viewport.
         var frame: NSRect
         if view.isFlipped {
@@ -162,6 +170,20 @@ extension TimelineViewController {
         if hoverBar.frame != frame { hoverBar.frame = frame }
         hoverBar.isHidden = false
         hoverBar.needsLayout = true
+    }
+
+    /// X позиции hover-бара: у края пузыря, если он есть, иначе у края строки.
+    static func hoverBarX(rowMaxX: CGFloat, bubbleMaxX: CGFloat?, barWidth: CGFloat, clip: CGRect) -> CGFloat {
+        let anchorRight: CGFloat
+        let gap: CGFloat
+        if let bubbleMaxX {
+            anchorRight = bubbleMaxX
+            gap = 8
+        } else {
+            anchorRight = rowMaxX - TimelineRowMetrics.horizontalInset
+            gap = 0
+        }
+        return max(clip.minX + 4, anchorRight - barWidth - gap)
     }
 
     private func setHoverHighlight(_ id: TimelineItemID?) {

@@ -159,6 +159,19 @@ struct BubbleLayoutTests {
         controller.usesBubbleStyle = false
         #expect(!controller.isViewLoaded)
     }
+
+    /// ADR 0041 M-7: hover-бар у края пузыря, в flat — у края строки.
+    @Test func hoverBarAnchorsToBubbleEdge() {
+        let clip = CGRect(x: 0, y: 0, width: 800, height: 600)
+        let flat = TimelineViewController.hoverBarX(rowMaxX: 795, bubbleMaxX: nil, barWidth: 120, clip: clip)
+        #expect(flat == 659, "flat: у края строки")
+        // Входящий пузырь: бар правым краем у пузыря.
+        let incoming = TimelineViewController.hoverBarX(rowMaxX: 795, bubbleMaxX: 300, barWidth: 120, clip: clip)
+        #expect(incoming == 172, "пузырь: у края пузыря")
+        // Не уезжает за левый край видимой области.
+        let clamped = TimelineViewController.hoverBarX(rowMaxX: 795, bubbleMaxX: 100, barWidth: 120, clip: clip)
+        #expect(clamped == clip.minX + 4)
+    }
 }
 
 /// Хост-стаб для прямой конфигурации MessageCellView без окна и контроллера.
@@ -260,5 +273,29 @@ struct BubbleCellTests {
         #expect(cell.bubbleMetaLabel != nil && !(cell.bubbleMetaLabel?.isHidden ?? true))
         cell.resetContent()
         #expect(cell.bubbleMetaLabel?.isHidden == true, "переиспользование прячет meta")
+    }
+
+    /// ADR 0041 M-7: hover-тит живёт в пузыре, row view не красит всю строку;
+    /// flat-строка подсвечивается по-старому.
+    @Test func rowHoverRoutesThroughBubble() {
+        let bubbled = configureCell(makePost(own: true))
+        #expect(bubbled.isBubbled)
+        let row = TimelineRowView(frame: NSRect(x: 0, y: 0, width: 400, height: bubbled.rowLayout.height))
+        row.addSubview(bubbled)
+        row.isHovered = true
+        #expect(bubbled.isRowHovered, "row view передал hover ячейке")
+        row.isHovered = false
+        #expect(!bubbled.isRowHovered)
+        // Flat: флаг доходит до ячейки, но она не пузырная — полнострочная
+        // подсветка остаётся на row view.
+        let flatCell = configureCell(makePost(own: true))
+        flatCell.resetContent()
+        #expect(!flatCell.isBubbled, "после сброса ячейка снова не пузырная")
+        let flatRow = TimelineRowView(frame: NSRect(x: 0, y: 0, width: 400, height: 40))
+        flatRow.addSubview(flatCell)
+        flatRow.isHovered = true
+        #expect(flatCell.isRowHovered && !flatCell.isBubbled, "флаг передаётся, тит — на row view")
+        flatRow.isHovered = false
+        #expect(!flatCell.isRowHovered)
     }
 }

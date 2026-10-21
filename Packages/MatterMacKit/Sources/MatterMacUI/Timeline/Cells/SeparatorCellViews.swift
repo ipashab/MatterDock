@@ -19,18 +19,30 @@ final class TimelineRowView: NSTableRowView {
     }
 
     /// The pointer is over this message (subtle background, like the official client).
+    /// В пузырном режиме (ADR 0041) тит рисует ячейка — подсветка ограничена
+    /// пузырём; здесь остаётся не рисовать полнострочную.
     var isHovered = false {
-        didSet { if oldValue != isHovered { needsDisplay = true } }
+        didSet {
+            guard oldValue != isHovered else { return }
+            needsDisplay = true
+            if let cell = subviews.compactMap({ $0 as? MessageCellView }).first {
+                cell.setRowHovered(isHovered)
+            }
+        }
     }
 
     override func drawBackground(in dirtyRect: NSRect) {
         super.drawBackground(in: dirtyRect)
         if isFlashing {
+            // Flash прыжка к посту — полнострочный (ADR 0041 §6).
             TimelinePalette.flashHighlight.setFill()
             bounds.fill()
         } else if isHovered {
-            TimelinePalette.hoverHighlight.setFill()
-            bounds.fill()
+            let bubbled = subviews.compactMap { $0 as? MessageCellView }.first?.isBubbled ?? false
+            if !bubbled {
+                TimelinePalette.hoverHighlight.setFill()
+                bounds.fill()
+            }
         }
     }
 

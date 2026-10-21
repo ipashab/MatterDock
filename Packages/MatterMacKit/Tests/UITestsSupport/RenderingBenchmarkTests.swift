@@ -13,6 +13,8 @@ struct RenderingBenchmarkTests {
     func largeAccount() async throws {
         let directory = await Self.directory()
         let controller = TimelineViewController()
+        // ADR 0041: MM_BENCHMARK_BUBBLES=1 гоняет тот же стенд в пузырном режиме.
+        if ProcessInfo.processInfo.environment["MM_BENCHMARK_BUBBLES"] == "1" { controller.usesBubbleStyle = true }
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 900, height: 650),
             styleMask: [.titled], backing: .buffered, defer: false)
         window.isReleasedWhenClosed = false

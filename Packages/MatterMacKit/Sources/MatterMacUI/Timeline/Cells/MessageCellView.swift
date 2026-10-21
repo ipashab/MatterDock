@@ -29,6 +29,12 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
                                                        : TimelinePalette.bubbleIncomingBackground
             background.setFill()
             Self.bubblePath(bubble).fill()
+            if isRowHovered {
+                // Hover-подсветка в пределах пузыря (ADR 0041 §6); строка выше
+                // своей заливки не рисует.
+                TimelinePalette.hoverHighlight.setFill()
+                Self.bubblePath(bubble).fill()
+            }
             if mentionsCurrentUser {
                 let border = Self.bubblePath(bubble)
                 border.lineWidth = 2
@@ -40,6 +46,16 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
             bounds.fill()
         }
         super.draw(dirtyRect)
+    }
+
+    /// Есть ли у строки пузырь — row view по этому не красит всю строку.
+    var isBubbled: Bool { rowLayout.bubble != nil }
+
+    /// Hover-тит передаётся от row view (строчная подсветка в пузырном режиме).
+    func setRowHovered(_ hovered: Bool) {
+        guard hovered != isRowHovered else { return }
+        isRowHovered = hovered
+        needsDisplay = true
     }
 
     /// Контур пузыря с индивидуальными радиусами углов (координаты ячейки
@@ -97,6 +113,9 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
     /// Meta (время ± «изм.») в хвосте пузыря (ADR 0041); nil — flat-режим.
     private(set) var bubbleMetaLabel: TimelineLabel?
     private(set) var isHoverHighlighted = false
+    /// Строчный hover-тит (ADR 0041 §6): в пузырном режиме подсветка ограничена
+    /// прямоугольником пузыря, а не всей строкой.
+    private(set) var isRowHovered = false
     private var pendingSpinner: NSProgressIndicator?
     private var pendingLabel: TimelineLabel?
     private var retryButton: TimelineTextButton?
@@ -573,6 +592,7 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
         hoverTimeLabel?.isHidden = true
         hoverTimeLabel?.attributedText = NSAttributedString()
         isHoverHighlighted = false
+        isRowHovered = false
         metaLabel.toolTip = nil
         setAccessibilityCustomActions(nil)
         rowLayout = MessageRowLayout()
