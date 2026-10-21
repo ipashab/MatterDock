@@ -365,6 +365,57 @@ struct MessageActionsTests {
         #expect(panel.itemID == nil)
     }
 
+    /// Панель реакторов не прячется под плавающим композером: у чипа
+    /// последнего сообщения внизу она уходит вверх от полосы строки ввода.
+    /// До фикса клип был полной высоты, и «под чипом» залезало под оверлей.
+    @Test func reactionPanelAvoidsTheComposerOverlay() throws {
+        let bottomReactions = [ReactionGroup(emojiName: "+1", count: 2, includesCurrentUser: false,
+                                             reactorNames: ["Bob"])]
+        let rows = (0..<12).map { index in
+            presentation(post(index + 1),
+                         reactions: index == 11 ? bottomReactions : [])
+        }
+        let f = makeTimeline(rows)
+        defer { f.close() }
+        f.controller.setBottomOverlayInset(140)
+        f.window.contentView?.layoutSubtreeIfNeeded()
+        let cellView = try cell(f, row: 11)
+        let chip = try #require(cellView.subviews.compactMap { $0 as? ReactionChipView }.first { !$0.isHidden })
+        try hover(f, at: cellView.convert(NSPoint(x: chip.frame.midX, y: chip.frame.midY), to: nil))
+        let panel = f.controller.reactionPanel
+        #expect(!panel.isHidden, "курсор над чипом последнего сообщения — панель показана")
+        let clip = f.controller.view.convert(f.controller.scrollView.contentView.bounds,
+                                             from: f.controller.scrollView.contentView)
+        let flipped = f.controller.view.isFlipped
+        let overlay = f.controller.scrollView.contentView.contentInsets.bottom
+        let usable = TimelineViewController.reactionUsableClip(clip: clip, overlayHeight: overlay, flipped: flipped)
+        #expect(usable.contains(panel.frame), "панель не заходит в полосу композера: panel=\(panel.frame) usable=\(usable)")
+        let chipInContainer = f.controller.view.convert(chip.frame, from: cellView)
+        if flipped {
+            #expect(panel.frame.maxY <= chipInContainer.minY, "снизу не влезло — панель над чипом")
+        } else {
+            #expect(panel.frame.minY >= chipInContainer.maxY, "снизу не влезло — панель над чипом")
+        }
+    }
+
+    /// Геометрия клипа с вычетом полосы композера: flipped — режем снизу maxY,
+    /// обычные координаты — снизу minY; нулевой оверлей клип не меняет.
+    @Test func reactionUsableClipSubtractsTheComposerBand() {
+        let clip = CGRect(x: 0, y: 20, width: 640, height: 480)
+        var usable = TimelineViewController.reactionUsableClip(clip: clip, overlayHeight: 60, flipped: true)
+        #expect(usable.minY == clip.minY)
+        #expect(usable.height == clip.height - 60)
+        usable = TimelineViewController.reactionUsableClip(clip: clip, overlayHeight: 60, flipped: false)
+        #expect(usable.minY == clip.minY + 60)
+        #expect(usable.maxY == clip.maxY)
+        usable = TimelineViewController.reactionUsableClip(clip: clip, overlayHeight: 0, flipped: true)
+        #expect(usable == clip)
+        usable = TimelineViewController.reactionUsableClip(clip: clip, overlayHeight: -5, flipped: true)
+        #expect(usable == clip, "отрицательная высота трактуется как ноль")
+        usable = TimelineViewController.reactionUsableClip(clip: clip, overlayHeight: 600, flipped: true)
+        #expect(usable.height == 0, "оверлей выше клипа — usable пуст, панель клампится в reactionPanelFrame")
+    }
+
     /// Геометрия панели: под чипом, иначе — над ним; всегда в границах клипа.
     @Test func reactionPanelFrameKeepsThePanelInsideTheClip() {
         let clip = CGRect(x: 0, y: 0, width: 640, height: 480)

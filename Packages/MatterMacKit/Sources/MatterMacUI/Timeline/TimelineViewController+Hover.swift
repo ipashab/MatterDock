@@ -235,11 +235,27 @@ extension TimelineViewController {
 
     func positionReactionPanel(cell: MessageCellView, chipInCell: CGRect) {
         let clip = view.convert(scrollView.contentView.bounds, from: scrollView.contentView)
+        // Панель лежит в контейнере таймлайна, а композер — оверлей выше по
+        // z-порядку: без вычета его полосы панель под чипом последнего
+        // сообщения прячется под строкой ввода.
+        let usable = Self.reactionUsableClip(clip: clip, overlayHeight: scrollView.contentView.contentInsets.bottom,
+                                             flipped: view.isFlipped)
         let chip = view.convert(chipInCell, from: cell)
-        let frame = Self.reactionPanelFrame(chip: chip, panelSize: reactionPanel.preferredSize, clip: clip,
+        let frame = Self.reactionPanelFrame(chip: chip, panelSize: reactionPanel.preferredSize, clip: usable,
                                             flipped: view.isFlipped)
         if reactionPanel.frame != frame { reactionPanel.frame = frame }
         reactionPanel.isHidden = false
+    }
+
+    /// Клип без полосы, перекрытой плавающим композером (`contentInsets.bottom`
+    /// переносит композер и полосу загрузок): панель реакторов занимает только
+    /// видимое поверх оверлея пространство.
+    static func reactionUsableClip(clip: CGRect, overlayHeight: CGFloat, flipped: Bool) -> CGRect {
+        let overlay = max(0, overlayHeight)
+        guard overlay > 0 else { return clip }
+        return flipped
+            ? CGRect(x: clip.minX, y: clip.minY, width: clip.width, height: max(0, clip.height - overlay))
+            : CGRect(x: clip.minX, y: clip.minY + overlay, width: clip.width, height: max(0, clip.height - overlay))
     }
 
     /// Позиция панели под чипом; не влезает снизу — над чипом; всегда внутри
