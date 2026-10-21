@@ -30,6 +30,8 @@ struct FolderRail: View {
 private struct FolderRailButton: View {
     let item: SidebarFolderItem
     @Bindable var session: SessionViewModel
+    /// Показ эмодзи-пикера иконки группы (контекстное меню, ADR 0043).
+    @State private var isIconPickerShown = false
 
     private var isSelected: Bool { session.selectedFolder == item.folder }
 
@@ -70,6 +72,30 @@ private struct FolderRailButton: View {
         .accessibilityLabel(accessibilityText)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
         .accessibilityIdentifier("sidebarFolder-\(item.folder.rawValue)")
+        .contextMenu { iconMenu }
+        .popover(isPresented: $isIconPickerShown, arrowEdge: .trailing) {
+            if item.kind == .group, let categoryID = item.categoryID {
+                EmojiIconPicker { name in
+                    isIconPickerShown = false
+                    session.setGroupIcon(categoryID: categoryID.rawValue, emoji: name)
+                } cancel: {
+                    isIconPickerShown = false
+                }
+                .frame(width: ReactionPickerViewController.preferredSize.width,
+                       height: ReactionPickerViewController.preferredSize.height)
+            }
+        }
+    }
+
+    /// Меню иконки — только у групп: выбор эмодзи (системный каталог) и сброс.
+    @ViewBuilder private var iconMenu: some View {
+        if item.kind == .group, let categoryID = item.categoryID {
+            Button("Choose Icon…") { isIconPickerShown = true }
+            if session.groupIcon(categoryID: categoryID.rawValue) != nil {
+                Divider()
+                Button("Reset Icon") { session.setGroupIcon(categoryID: categoryID.rawValue, emoji: nil) }
+            }
+        }
     }
 
     /// Дефолтные глифы — по контракту ADR 0043; группа — выбранное эмодзи или папка.
@@ -123,4 +149,20 @@ private struct FolderRailButton: View {
         else if item.unreadCount > 0 { parts.append(String(localized: "unread")) }
         return parts.joined(separator: ", ")
     }
+}
+
+/// Эмодзи-пикер для иконки группы: системный каталог из реакций без custom-страниц
+/// (custom-эмодзи сервера не рисуются рельсой — нет загрузчика, честно не предлагаем).
+private struct EmojiIconPicker: NSViewControllerRepresentable {
+    let pick: (String) -> Void
+    let cancel: () -> Void
+
+    func makeNSViewController(context: Context) -> ReactionPickerViewController {
+        let picker = ReactionPickerViewController()
+        picker.onPick = pick
+        picker.onCancel = cancel
+        return picker
+    }
+
+    func updateNSViewController(_ picker: ReactionPickerViewController, context: Context) {}
 }

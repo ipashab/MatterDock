@@ -55,6 +55,18 @@ public final class SessionViewModel {
     func groupIcon(categoryID: String) -> String? {
         app?.environment.settings.sidebarGroupIcons[categoryID]
     }
+
+    /// Иконка группы — короткое имя системного эмодзи; nil сбрасывает к дефолтному
+    /// глифу. Хранилище локальное и валидируется при загрузке (≤100 записей).
+    public func setGroupIcon(categoryID: String, emoji: String?) {
+        guard let settings = app?.environment.settings else { return }
+        let key = String(categoryID.prefix(64))
+        if let emoji {
+            settings.sidebarGroupIcons[key] = String(emoji.prefix(64))
+        } else {
+            settings.sidebarGroupIcons.removeValue(forKey: key)
+        }
+    }
     /// Сколько незавершённых черновиков у этой сессии (бейдж папки «Черновики»;
     /// хранилище — MainActor в UI, Core считал бы через него, поэтому живое число тут).
     public var draftsFolderCount: Int {

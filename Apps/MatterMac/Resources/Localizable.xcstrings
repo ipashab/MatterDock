@@ -1965,6 +1965,16 @@
         }
       }
     },
+    "Choose Icon…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбрать иконку…"
+          }
+        }
+      }
+    },
     "Choose Picture…": {
       "localizations": {
         "ru": {
@@ -5137,6 +5147,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ответ для %@"
+          }
+        }
+      }
+    },
+    "Reset Icon": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сбросить иконку"
           }
         }
       }
