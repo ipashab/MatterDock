@@ -60,6 +60,56 @@ public enum TimelineBuilder {
     /// Most names reported missing by one build.
     public static let maximumMissingEmojiNames = 200
 
+    /// Хвост группы: заранее вычисляем, продолжает ли каждая pending-отправка
+    /// предыдущую группу (последний пост окна или предыдущую отправку). Нужно до
+    /// основного цикла, чтобы пометить `isLastInGroup` у последнего подтверждённого
+    /// поста, когда первый pending продолжает его группу.
+    static func pendingContinuations(window: HistoryWindow, store: PostStore, pending: [PendingSend],
+                                     context: TimelineBuildContext, isThread: Bool) -> [Bool] {
+        guard !pending.isEmpty, !window.hasNewer else { return [] }
+        // Последний подтверждённый пост окна — «previous» для первой отправки.
+        let previous = window.entries.reversed().lazy.compactMap { store.entry($0.id)?.post }.first
+        let previousDay = previous.map { dayNumber($0.createAt, timeZone: context.timeZone) }
+        var groupStart: MattermostTimestamp? = previous.flatMap { prev in
+            prev.userID == context.me && !prev.type.isSystem && !prev.isDeleted && prev.props.overrideUsername == nil
+                ? prev.createAt : nil
+        }
+        var groupRoot = previous?.rootID
+        var flags: [Bool] = []
+        for send in pending {
+            let sameDay = previousDay == nil || previousDay == dayNumber(send.createdAt, timeZone: context.timeZone)
+            let continuesGroup = sameDay && (groupRoot == send.rootID || isThread) && groupStart.map {
+                send.createdAt.milliseconds - $0.milliseconds < groupingIntervalMilliseconds
+                    && send.createdAt >= $0
+            } == true
+            flags.append(continuesGroup)
+            groupStart = send.createdAt
+            groupRoot = send.rootID
+        }
+        return flags
+    }
+
+    /// Связывает ли следующий отображаемый пост группу текущего: разделяющие
+    /// события (смена дня, unread-граница) и правило `continues`. Возвращает true,
+    /// если после `index` разрешённых записей окна нет.
+    private static func nextContinuesGroup(at index: Int, window: HistoryWindow, store: PostStore, post: Post,
+                                           day: Int, context: TimelineBuildContext, isThread: Bool) -> (continues: Bool, isWindowEnd: Bool) {
+        var lookahead = index + 1
+        while lookahead < window.entries.count {
+            guard let nextStored = store.entry(window.entries[lookahead].id) else {
+                lookahead += 1
+                continue
+            }
+            let next = nextStored.post
+            let nextDay = dayNumber(next.createAt, timeZone: context.timeZone)
+            let nextShowsThreadContext = !isThread && !context.collapsedThreads && next.rootID != nil
+            let continuesNext = nextDay == day && window.unreadBoundary != next.id
+                && continues(post, with: next, isThread: isThread, showsThreadContext: nextShowsThreadContext)
+            return (continuesNext, false)
+        }
+        return (false, true)
+    }
+
     public static func build(window: HistoryWindow, store: PostStore, directory: DirectoryStore,
                              pending: [PendingSend], context: TimelineBuildContext,
                              customEmoji: CustomEmojiStore? = nil) -> Output {
@@ -70,6 +120,8 @@ public enum TimelineBuilder {
         var missing = Set<UserID>()
         let isThread: Bool
         if case .thread = window.target { isThread = true } else { isThread = false }
+        let pendingContinuations = self.pendingContinuations(window: window, store: store, pending: pending,
+                                                            context: context, isThread: isThread)
 
         if window.isLoaded || !window.isEmpty {
             if window.hasOlder {
@@ -90,7 +142,7 @@ public enum TimelineBuilder {
             window.entries.firstIndex { $0.id == boundary }.map { window.entries.count - $0 }
         } ?? 0
 
-        for entry in window.entries {
+        for (index, entry) in window.entries.enumerated() {
             guard let stored = store.entry(entry.id) else { continue }
             let post = stored.post
             let day = dayNumber(post.createAt, timeZone: context.timeZone)
@@ -113,10 +165,18 @@ public enum TimelineBuilder {
             let isContinuation = !separated && previous.map { prev in
                 continues(prev, with: post, isThread: isThread, showsThreadContext: showsThreadContext)
             } ?? false
+            // Хвост группы (ADR 0041): следующий отображаемый пост не продолжает
+            // эту группу; в конце окна группу может продолжить первый pending.
+            let (nextContinues, isWindowEnd) = nextContinuesGroup(at: index, window: window, store: store,
+                                                                  post: post, day: day, context: context,
+                                                                  isThread: isThread)
+            var isLastInGroup = !nextContinues
+            if isWindowEnd, pendingContinuations.first == true { isLastInGroup = false }
             var presentation = postPresentation(
                 post: post, document: stored.document, author: author, isContinuation: isContinuation,
                 showsThreadContext: showsThreadContext, expanded: window.expanded.contains(post.id),
-                context: context, isThread: isThread, directory: directory, missing: &missing)
+                context: context, isThread: isThread, directory: directory, missing: &missing,
+                isLastInGroup: isLastInGroup)
             if context.customEmojiEnabled, let customEmoji {
                 resolveCustomEmoji(in: &presentation, post: post, candidates: stored.customEmojiCandidates,
                                    store: customEmoji, now: context.now.date, missing: &missingEmoji,
@@ -125,6 +185,7 @@ public enum TimelineBuilder {
             var hasher = Hasher()
             hasher.combine(stored.revision)
             hasher.combine(isContinuation)
+            hasher.combine(isLastInGroup)
             hasher.combine(author)
             hasher.combine(presentation.actions)
             hasher.combine(window.expanded.contains(post.id))
@@ -146,19 +207,10 @@ public enum TimelineBuilder {
         } else {
             // Pending sends appear only at the live edge, after confirmed history. Like the
             // official client, a pending send continues the user's own recent group.
-            var groupStart: MattermostTimestamp? = previous.flatMap { prev in
-                prev.userID == context.me && !prev.type.isSystem && !prev.isDeleted && prev.props.overrideUsername == nil
-                    ? prev.createAt : nil
-            }
-            var groupRoot = previous?.rootID
-            for send in pending {
-                let sameDay = previousDay == nil || previousDay == dayNumber(send.createdAt, timeZone: context.timeZone)
-                let continuesGroup = sameDay && (groupRoot == send.rootID || isThread) && groupStart.map {
-                    send.createdAt.milliseconds - $0.milliseconds < groupingIntervalMilliseconds
-                        && send.createdAt >= $0
-                } == true
-                groupStart = send.createdAt
-                groupRoot = send.rootID
+            for (index, send) in pending.enumerated() {
+                let continuesGroup = index < pendingContinuations.count && pendingContinuations[index]
+                // Хвост группы: последняя отправка в цепочке (следующая рвёт группу или её нет).
+                let isLastInGroup = index + 1 >= pending.count || !pendingContinuations[index + 1]
                 let author = authorPresentation(context.me, post: nil, directory: directory, me: context.me,
                                                 missing: &missing)
                 var blocks: [MarkupBlock] = [.paragraph([.text(send.message)])]
@@ -171,11 +223,13 @@ public enum TimelineBuilder {
                     author: author, createdAt: send.createdAt, isContinuation: continuesGroup,
                     body: .document(document, isCollapsed: send.message.count > context.collapsedMessageCharacters),
                     isEdited: false, isPinned: false, files: [], reactions: [], replyCount: 0,
-                    showsThreadContext: false, sendState: send.presentationState, actions: .none, permalink: nil)
+                    showsThreadContext: false, sendState: send.presentationState, actions: .none, permalink: nil,
+                    isLastInGroup: isLastInGroup)
                 var hasher = Hasher()
                 hasher.combine(send.presentationState)
                 hasher.combine(send.attachments.count)
                 hasher.combine(continuesGroup)
+                hasher.combine(isLastInGroup)
                 items.append(TimelineItem(id: TimelineItemID(.pending(send.pendingID)),
                                           revision: UInt64(bitPattern: Int64(hasher.finalize())),
                                           content: .post(presentation)))
@@ -263,7 +317,7 @@ public enum TimelineBuilder {
     static func postPresentation(post: Post, document: MessageDocument, author: AuthorPresentation, isContinuation: Bool,
                                  showsThreadContext: Bool, expanded: Bool, context: TimelineBuildContext,
                                  isThread: Bool, directory: DirectoryStore,
-                                 missing: inout Set<UserID>) -> PostPresentation {
+                                 missing: inout Set<UserID>, isLastInGroup: Bool = true) -> PostPresentation {
         let body: MessageBody
         if post.isDeleted {
             body = .deleted
@@ -300,7 +354,8 @@ public enum TimelineBuilder {
             replyCount: post.rootID == nil ? post.replyCount : 0, showsThreadContext: showsThreadContext,
             sendState: nil, actions: actions, permalink: permalink,
             isSaved: directory.savedPosts.contains(post.id), editedAt: post.isEdited ? post.editAt : nil,
-            linkPreview: visiblePreview(post, directory: directory, context: context))
+            linkPreview: visiblePreview(post, directory: directory, context: context),
+            isLastInGroup: isLastInGroup)
     }
 
     /// The link preview to show, honoring `display_settings/link_previews` for website

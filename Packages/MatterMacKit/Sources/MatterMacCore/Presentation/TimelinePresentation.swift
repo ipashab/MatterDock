@@ -202,6 +202,9 @@ public struct PostPresentation: Hashable, Sendable {
     public let createdAt: MattermostTimestamp
     /// Same author, within the grouping interval, no separator in between.
     public let isContinuation: Bool
+    /// Хвост группы: следующий пост (включая pending) не продолжает эту группу.
+    /// Нужен пузырям (ADR 0041) для сплюснутого нижнего угла.
+    public let isLastInGroup: Bool
     public let body: MessageBody
     public let isEdited: Bool
     public let isPinned: Bool
@@ -230,7 +233,7 @@ public struct PostPresentation: Hashable, Sendable {
                 body: MessageBody, isEdited: Bool, isPinned: Bool, files: [FileInfo], reactions: [ReactionGroup],
                 replyCount: Int, showsThreadContext: Bool, sendState: SendState?, actions: PostActionHints,
                 permalink: URL?, isSaved: Bool = false, editedAt: MattermostTimestamp? = nil,
-                linkPreview: LinkPreview? = nil) {
+                linkPreview: LinkPreview? = nil, isLastInGroup: Bool = true) {
         self.postID = postID
         self.pendingID = pendingID
         self.channelID = channelID
@@ -238,6 +241,7 @@ public struct PostPresentation: Hashable, Sendable {
         self.author = author
         self.createdAt = createdAt
         self.isContinuation = isContinuation
+        self.isLastInGroup = isLastInGroup
         self.body = body
         self.isEdited = isEdited
         self.isPinned = isPinned

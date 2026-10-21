@@ -256,11 +256,52 @@ struct TimelineBuilderInteractionTests {
         }
         let rows = posts(build([a, b, c, d, hook, edited], pending: pending))
         #expect(rows.map(\.isContinuation) == [false, true, false, false, false, false, false, true])
+        // ADR 0041: хвост группы — у последнего поста каждой цепочки.
+        #expect(rows.map(\.isLastInGroup) == [false, true, true, true, true, true, false, true])
         #expect(rows[5].isEdited && rows[5].editedAt == edited.editAt)
         // A pending send right after the user's own post continues that group.
         let own = CoreFixtures.post(7, channel: channel.id, user: CoreFixtures.me.id, createAt: base + 15 * minute - 1_000)
         let continued = posts(build([a, own], pending: Array(pending.prefix(1))))
         #expect(continued.last?.isContinuation == true)
+        #expect(continued.map(\.isLastInGroup) == [true, false, true])
         for send in pending { ledger.release(send.reservation) }
+    }
+
+    @Test func lastInGroupEndsAtDateSeparators() {
+        let base: Int64 = (1_700_000_000_000 / 86_400_000) * 86_400_000 + 20 * 60_000 // 20:00 UTC
+        let a = CoreFixtures.post(1, channel: channel.id, user: CoreFixtures.me.id, createAt: base)
+        let b = CoreFixtures.post(2, channel: channel.id, user: CoreFixtures.me.id, createAt: base + 2 * 60_000)
+        let c = CoreFixtures.post(3, channel: channel.id, user: CoreFixtures.me.id,
+                                  createAt: base + 86_400_000 + 4 * 60_000)
+        let rows = posts(build([a, b, c]))
+        #expect(rows.map(\.isContinuation) == [false, true, false])
+        // Сепаратор дня рвёт группу: b — хвост, c начинается заново.
+        #expect(rows.map(\.isLastInGroup) == [false, true, true])
+    }
+
+    @Test func lastInGroupEndsAtUnreadBoundary() {
+        let base: Int64 = 1_700_000_000_000
+        let a = CoreFixtures.post(1, channel: channel.id, user: CoreFixtures.me.id, createAt: base)
+        let b = CoreFixtures.post(2, channel: channel.id, user: CoreFixtures.me.id, createAt: base + 60_000)
+        var store = PostStore(render: { CoreFixtures.plainDocuments.document(for: $0) })
+        store.upsert(a)
+        store.upsert(b)
+        let target = TimelineTarget.channel(channel.id)
+        var window = HistoryWindow(target: target)
+        _ = window.replace(with: [HistoryWindow.Entry(id: a.id, createAt: a.createAt),
+                                  HistoryWindow.Entry(id: b.id, createAt: b.createAt)], hasOlder: false, hasNewer: false)
+        window.unreadBoundary = b.id
+        var dir = DirectoryStore(budget: .standard)
+        dir.pin(CoreFixtures.me)
+        dir.upsertUser(CoreFixtures.bob)
+        let context = TimelineBuildContext(
+            scope: AccountScope(server: ServerSlotID(1), user: CoreFixtures.me.id), me: CoreFixtures.me.id, channel: channel,
+            teamName: "qa", endpoint: CoreFixtures.endpoint, collapsedThreads: false, editTimeLimitSeconds: nil,
+            canDeleteOthers: false, now: MattermostTimestamp(milliseconds: 1_800_000_000_000), collapsedMessageCharacters: 4_000,
+            timeZone: TimeZone(secondsFromGMT: 0)!, linkPreviewImages: false)
+        let rows = posts(TimelineBuilder.build(window: window, store: store, directory: dir, pending: [], context: context))
+        #expect(rows.map(\.isContinuation) == [false, false])
+        // Unread-граница перед b рвёт группу: a — хвост своей группы.
+        #expect(rows.map(\.isLastInGroup) == [true, true])
     }
 }
