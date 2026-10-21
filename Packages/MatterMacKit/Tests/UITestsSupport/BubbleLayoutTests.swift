@@ -38,21 +38,19 @@ struct BubbleLayoutTests {
         let incoming = metrics.messageLayout(for: post(own: false), width: width, bodyHeight: 20,
                                              renderer: MessageRenderer(), style: .bubble)
         let bubble = incoming.bubble!
-        // Рендер OpenDesign: все посты — исходящая колонка у правого края
-        // (`.msg-row.out`), у чужих справа стоит их аватар 38, имя — над пузырём.
-        let rail = width - TimelineRowMetrics.horizontalInset
-        #expect(abs(bubble.frame.maxX - (rail - TimelineRowMetrics.BubbleMetrics.avatarSize
-            - TimelineRowMetrics.BubbleMetrics.avatarGap)) < 1,
-                "чужой пузырь перед аватаром справа")
-        #expect(abs(incoming.avatar!.maxX - rail) < 1 && incoming.avatar!.width == 38)
+        // Стороны классические: чужое — слева с аватаром 38 у края, пузырь сразу
+        // за ним; имя автора — над пузырём.
+        let rail = TimelineRowMetrics.horizontalInset + TimelineRowMetrics.BubbleMetrics.avatarSize
+        #expect(abs(bubble.frame.minX - (rail + TimelineRowMetrics.BubbleMetrics.avatarGap)) < 1,
+                "чужой пузырь сразу за аватаром слева")
+        #expect(abs(incoming.avatar!.minX - TimelineRowMetrics.horizontalInset) < 1 && incoming.avatar!.width == 38)
         #expect(incoming.header != nil, "у головного чужого поста есть имя автора")
         let own = metrics.messageLayout(for: post(own: true), width: width, bodyHeight: 20,
                                         renderer: MessageRenderer(), style: .bubble).bubble!
         #expect(own.frame.maxX == width - TimelineRowMetrics.horizontalInset)
         #expect(own.frame.minY < bubble.frame.minY, "свой пост без имени — пузырь начинается выше")
-        // Радиусы у рендера постоянны: 14/14/14 и хвост 4 в правом нижнем углу,
-        // у всех постов и вне зависимости от группировки.
-        #expect(bubble.topLeft == 14 && bubble.topRight == 14 && bubble.bottomLeft == 14 && bubble.bottomRight == 4)
+        // Радиусы: 14 везде, хвост — у нижнего угла на стороне автора (зеркально).
+        #expect(bubble.topLeft == 14 && bubble.topRight == 14 && bubble.bottomRight == 14 && bubble.bottomLeft == 4)
         #expect(own.topLeft == 14 && own.topRight == 14 && own.bottomLeft == 14 && own.bottomRight == 4)
         // Continuation внутри группы: та же колонка, meta нет.
         let continued = metrics.messageLayout(for: post(own: true, continuation: true, last: false), width: width,

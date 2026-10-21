@@ -76,7 +76,8 @@ struct SidebarView: View {
                         Section {
                             ForEach(rows) { row in
                                 SidebarRow(row: row, session: session,
-                                           hasDraft: drafts.contains(row.channelID) && row.channelID != session.selectedChannel)
+                                           hasDraft: drafts.contains(row.channelID) && row.channelID != session.selectedChannel,
+                                           large: app.environment.settings.largeChatList)
                                     .tag(row.channelID)
                                     .contextMenu { rowMenu(row) }
                             }
@@ -302,8 +303,135 @@ struct SidebarRow: View {
     let row: SidebarChannelRow
     let session: SessionViewModel
     var hasDraft = false
+    /// Крупная строка рендера OpenDesign: аватар 38, имя с временем и превью
+    /// последнего сообщения; компактный режим — прежняя однострочная.
+    var large = false
 
     var body: some View {
+        if large {
+            largeBody
+        } else {
+            compactBody
+        }
+    }
+
+    // MARK: - Крупная строка (рендер OpenDesign)
+
+    private var largeBody: some View {
+        HStack(spacing: 10) {
+            largeAvatar
+            VStack(spacing: 1) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(row.displayName)
+                        .font(.system(size: 14, weight: row.isUnread ? .semibold : .medium))
+                        .foregroundStyle(row.isArchived ? .secondary : .primary)
+                        .lineLimit(1)
+                        .help(row.partnerUsername.map { "@" + $0 } ?? row.displayName)
+                    Spacer(minLength: 4)
+                    Text(listTime)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                }
+                HStack(spacing: 6) {
+                    previewText
+                    if hasDraft {
+                        Image(systemName: "pencil")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .help("Unsent draft")
+                    }
+                    if row.mentionCount > 0 {
+                        Text(row.mentionCount > 99 ? "99+" : "\(row.mentionCount)")
+                            .font(.system(size: 12, weight: .semibold))
+                            .padding(.horizontal, 6)
+                            .frame(minHeight: 20)
+                            .background(Capsule().fill(.tint))
+                            .foregroundStyle(.white)
+                    } else if row.isUnread {
+                        Circle().fill(.tint).frame(width: 8, height: 8)
+                    }
+                }
+            }
+        }
+        .opacity(row.isMuted && row.mentionCount == 0 ? 0.55 : 1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAddTraits(session.selectedChannel == row.channelID ? .isSelected : [])
+        .accessibilityAction { session.select(channel: row.channelID) }
+    }
+
+    /// Аватар 38: у личных — фото с точкой статуса, у каналов/групп —
+    /// тонированная плашка с глифом (рендер: avatar-38, радиус 27%).
+    @ViewBuilder private var largeAvatar: some View {
+        switch row.type {
+        case .direct:
+            if let partner = row.partnerID {
+                ProfileAvatar(session: session, userID: partner, revision: row.partnerAvatarRevision,
+                              name: row.displayName, size: 38, status: row.partnerStatus ?? .offline)
+            } else {
+                statusPlaceholderCircle
+            }
+        case .group:
+            glyphAvatar(systemImage: "person.2")
+        case .private:
+            glyphAvatar(systemImage: row.isArchived ? "archivebox" : "lock")
+        default:
+            glyphAvatar(systemImage: row.isArchived ? "archivebox" : "number")
+        }
+    }
+
+    @ViewBuilder private var statusPlaceholderCircle: some View {
+        ZStack {
+            Circle().fill(.quaternary)
+            Circle().fill(statusColor).frame(width: 10, height: 10)
+        }
+        .frame(width: 38, height: 38)
+    }
+
+    private func glyphAvatar(systemImage: String) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: 38 * 0.27, style: .continuous)
+                .fill(Color(nsColor: TimelinePalette.avatarTint(for: row.channelID.rawValue)).opacity(0.28))
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(Color(nsColor: TimelinePalette.avatarTint(for: row.channelID.rawValue)))
+        }
+        .frame(width: 38, height: 38)
+    }
+
+    private var previewText: some View {
+        Group {
+            if let preview = row.lastPostPreview {
+                if let author = preview.authorName {
+                    (Text("\(author): ").fontWeight(.medium) + Text(preview.text))
+                } else {
+                    Text(preview.text)
+                }
+            } else if row.lastPostAt == MattermostTimestamp.zero {
+                Text("No messages yet").italic()
+            } else {
+                Text(verbatim: "")
+            }
+        }
+        .font(.system(size: 13))
+        .foregroundStyle(.secondary)
+        .lineLimit(1)
+        .truncationMode(.tail)
+    }
+
+    /// Время последнего сообщения в строке: часы-минуты сегодня, иначе день и месяц.
+    private var listTime: String {
+        let date = Date(timeIntervalSince1970: Double(row.lastPostAt.milliseconds) / 1000)
+        if Calendar.current.isDateInToday(date) {
+            return date.formatted(.dateTime.hour().minute())
+        }
+        return date.formatted(.dateTime.day().month())
+    }
+
+    // MARK: - Компактная строка (прежняя)
+
+    private var compactBody: some View {
         HStack(spacing: 6) {
             icon
                 .frame(width: row.partnerID == nil ? 16 : 20)

@@ -11,6 +11,8 @@ extension ServerSession {
         let crt = collapsedThreadsActive
         loadCategoriesIfNeeded()
         updateStickyUnread(collapsedThreads: crt)
+        // Превью последних сообщений дозаполняются понемногу при каждой публикации.
+        backfillSidebarPreviews()
         let usesCategories = selectedTeam.map { directory.categories[$0]?.isEmpty == false } ?? false
         sidebarContinuation.yield(SidebarSnapshot(scope: scope, generation: sidebarGeneration,
                                                   teams: teamSummaries(collapsedThreads: crt),
@@ -41,7 +43,74 @@ extension ServerSession {
             partnerID: channel.type == .direct ? partner : nil,
             partnerAvatarRevision: partner.flatMap { directory.peekUser($0)?.lastPictureUpdate.milliseconds } ?? 0,
             partnerUsername: partner.flatMap { directory.peekUser($0)?.username },
-            isFavorite: isFavorite)
+            isFavorite: isFavorite,
+            lastPostPreview: channelPreviews[channel.id])
+    }
+
+    // MARK: - Превью последнего сообщения (рендер OpenDesign)
+
+    /// Превью последнего сообщения канала для крупной строки сайдбара. Порт
+    /// `previewOf` из прототипа: код → «код», переводы строк — пробел, разметка
+    /// снята, до 90 символов; префикс — имя автора либо «Вы».
+    func sidebarPreview(of post: Post) -> SidebarPostPreview {
+        var raw = post.message
+        // ```блоки``` → «код» (как в прототипе).
+        while let range = raw.range(of: "```") {
+            guard let close = raw.range(of: "```", range: range.upperBound..<raw.endIndex) else { break }
+            raw.replaceSubrange(range.lowerBound..<close.upperBound, with: "«код»")
+        }
+        raw = raw.replacingOccurrences(of: "\n", with: " ")
+        if raw.hasPrefix("#") { raw.removeFirst() }
+        for token in ["**", "~~"] {
+            raw = raw.replacingOccurrences(of: token, with: "")
+        }
+        raw = raw.replacingOccurrences(of: "  ", with: " ")
+        let text = String(raw.prefix(Self.sidebarPreviewLimit))
+        let author: String?
+        if post.userID == me.id {
+            author = String(localized: "You")
+        } else if let user = directory.peekUser(post.userID) {
+            author = directory.nameFormat.displayName(for: user)
+        } else {
+            author = nil
+        }
+        return SidebarPostPreview(authorName: author, text: text)
+    }
+
+    static let sidebarPreviewLimit = 90
+
+    /// Дозаполняет превью для свежих видимых каналов одним постом на канал;
+    /// каждый канал запрашивается не больше одного раза за сессию.
+    func backfillSidebarPreviews(limit: Int = 4) {
+        guard !isShutDown else { return }
+        let candidates = directory.channels.values
+            .filter { directory.memberships[$0.id] != nil && $0.lastPostAt > MattermostTimestamp.zero
+                      && channelPreviews[$0.id] == nil && !sidebarPreviewFetched.contains($0.id) }
+            .sorted { $0.lastPostAt > $1.lastPostAt }
+            .prefix(limit)
+        for channel in candidates {
+            sidebarPreviewFetched.insert(channel.id)
+            guard !isRunning(.sidebarPreview(channel.id)) else { continue }
+            run(.sidebarPreview(channel.id)) { session in
+                let epoch = session.epoch
+                guard let channel = session.directory.channels[channel.id], session.epoch == epoch, !Task.isCancelled else {
+                    return
+                }
+                do {
+                    let page = try await session.service.posts(channel: channel.id, query: .latest(perPage: 1),
+                                                               collapsedThreads: false, priority: .background)
+                    guard session.epoch == epoch, !Task.isCancelled, let post = page.posts.first else { return }
+                    // Мимо могли прийти более свежие realtime-события — не откатываем.
+                    guard channel.lastPostAt == post.createAt || session.channelPreviews[channel.id] == nil else { return }
+                    session.channelPreviews[channel.id] = session.sidebarPreview(of: post)
+                    session.channelPreviewStamp[channel.id] = post.id
+                    session.markDirty(.sidebar)
+                } catch {
+                    // Превью — косметика: ошибка не влияет на работу сессии.
+                    session.deps.diagnostics.record(.sync, .warning, "sidebar preview fetch failed")
+                }
+            }
+        }
     }
 
     /// Human-readable channel name. DMs use the partner's display name; GMs drop the

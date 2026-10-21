@@ -397,6 +397,10 @@ struct AppearanceSettingsTab: View {
                     .accessibilityIdentifier("bubbleTimelineToggle")
                 Text("Messages in Telegram-style bubbles; the classic flat layout is restored by turning this off.")
                     .font(.caption).foregroundStyle(.secondary)
+                Toggle("Large chat rows", isOn: $settings.largeChatList)
+                    .accessibilityIdentifier("largeChatListToggle")
+                Text("Chat list with avatars, timestamps and last-message previews; off — the compact one-line list.")
+                    .font(.caption).foregroundStyle(.secondary)
                 LabeledContent("Message density") { Text("Standard") }
                 Text("A compact message layout is not available yet.")
                     .font(.caption).foregroundStyle(.secondary)

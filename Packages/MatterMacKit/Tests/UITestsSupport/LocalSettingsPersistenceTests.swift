@@ -69,6 +69,7 @@ struct LocalSettingsPersistenceTests {
         first.sendBehavior = .commandReturnSends
         first.textSize = .extraLarge
         first.bubbleTimeline = true
+        first.largeChatList = false
         first.appearance = .dark
         first.language = .russian
         first.checksForUpdates = false
@@ -89,6 +90,7 @@ struct LocalSettingsPersistenceTests {
         #expect(!restored.playSound && !restored.bounceDockIcon && restored.soundName == sound)
         #expect(restored.sendBehavior == .commandReturnSends && restored.textSize == .extraLarge)
         #expect(restored.bubbleTimeline)
+        #expect(!restored.largeChatList)
         #expect(restored.appearance == .dark && restored.language == .russian)
         #expect(!restored.checksForUpdates && restored.updateChannel == .nightly)
         #expect(restored.theme == .preset(.dusk))
@@ -104,6 +106,7 @@ struct LocalSettingsPersistenceTests {
             "MatterMac.playSound": [false],
             "MatterMac.bounceDockIcon": 2.5,
             "MatterMac.bubbleTimeline": "YES",
+            "MatterMac.largeChatList": "NO",
             "MatterMac.soundName": "Not A System Sound",
             "MatterMac.sendBehavior": "shiftReturnSends",
             "MatterMac.textSize": true,
@@ -118,6 +121,7 @@ struct LocalSettingsPersistenceTests {
         #expect(settings.theme == .system)
         // Строка вместо Bool — только настоящий Bool в расчёт (дефолт — включено, ADR 0042).
         #expect(settings.bubbleTimeline)
+        #expect(settings.largeChatList)
         #expect(storage.writes == 0)
         // Only real booleans count; a valid value next to invalid ones is kept.
         let mixed = LocalSettings(storage: MemorySettingsStorage([

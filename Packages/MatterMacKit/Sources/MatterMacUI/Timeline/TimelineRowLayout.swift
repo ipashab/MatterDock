@@ -280,15 +280,17 @@ struct TimelineRowMetrics {
 
         let padding = Self.BubbleMetrics.horizontalPadding
         let bubbleWidth = inner + 2 * padding
-        // Рендер OpenDesign: все посты лежат колонкой у правого края; у чужих
-        // справа же стоит их аватар (`.msg-row.out` — row-reverse). Колонка
-        // контента тянется на ≤76% ширины строки; имя и полка — внутри колонки.
+        // Стороны классические: своё — колонка у правого края, чужое — у левого,
+        // с аватаром слева и именем над пузырём (владелец вернул аватары влево).
+        // Колонка контента ≤76% ширины строки: имя и полка — внутри колонки.
         let avatarRail: CGFloat = own ? 0 : Self.BubbleMetrics.avatarSize + Self.BubbleMetrics.avatarGap
-        let columnRight = width - Self.horizontalInset - avatarRail
         let columnWidth = innerMax + 2 * padding
-        let columnLeft = columnRight - columnWidth
-        let bubbleX = columnRight - bubbleWidth
-        // Полка аксессуаров под пузырём прижата к правому краю колонки.
+        let columnLeft: CGFloat = own ? width - Self.horizontalInset - columnWidth
+                                      : Self.horizontalInset + avatarRail
+        let columnRight = columnLeft + columnWidth
+        let bubbleX = own ? columnRight - bubbleWidth : columnLeft
+        // Полка аксессуаров под пузырём живёт в границах колонки; прижим — по
+        // стороне автора.
         let accessoryX = columnLeft
         let accessoryWidth = columnWidth
         var y: CGFloat = headerNeeded ? Self.headerTopPadding : Self.continuationTopPadding
@@ -299,14 +301,13 @@ struct TimelineRowMetrics {
             y += fonts.metaLineHeight + 2
         }
         // Имя автора — над пузырём у головного поста чужих (у своего имени нет);
-        // аватар у рендера стоит у каждого чужого поста, справа от колонки.
+        // аватар стоит у каждого чужого поста, слева от колонки.
         if headerNeeded, !own {
             layout.header = CGRect(x: columnLeft, y: y, width: columnWidth, height: fonts.authorLineHeight)
             y += fonts.authorLineHeight + 2
         }
         if !own {
-            layout.avatar = CGRect(x: width - Self.horizontalInset - Self.BubbleMetrics.avatarSize,
-                                   y: rowTop + 3,
+            layout.avatar = CGRect(x: Self.horizontalInset, y: rowTop + 3,
                                    width: Self.BubbleMetrics.avatarSize, height: Self.BubbleMetrics.avatarSize)
         }
 
@@ -361,14 +362,16 @@ struct TimelineRowMetrics {
             }
         }
 
-        // Рендер: у всех пузырей одинаковые радиусы — 14/14/14 и хвост 4 в правом
-        // нижнем углу (`.msg-row.out .bubble`). Группировка на радиусы не влияет.
+        // Сторона автора держит хвост: своё — правый нижний угол, чужое — левый
+        // (зеркально, как у мессенджеров); остальные углы — 14.
         bubble.frame = CGRect(x: bubbleX, y: bubbleTop, width: bubbleWidth,
                                height: innerY - bubbleTop + Self.BubbleMetrics.verticalBottomPadding)
         bubble.topLeft = Self.BubbleMetrics.cornerRadius
         bubble.topRight = Self.BubbleMetrics.cornerRadius
         bubble.bottomLeft = Self.BubbleMetrics.cornerRadius
-        bubble.bottomRight = Self.BubbleMetrics.tailCornerRadius
+        bubble.bottomRight = Self.BubbleMetrics.cornerRadius
+        if own { bubble.bottomRight = Self.BubbleMetrics.tailCornerRadius }
+        else { bubble.bottomLeft = Self.BubbleMetrics.tailCornerRadius }
         layout.bubble = bubble
         y = bubble.frame.maxY
 
@@ -410,15 +413,19 @@ struct TimelineRowMetrics {
                 chipLineMaxes[lineY.rounded()] = max(chipLineMaxes[lineY.rounded()] ?? accessoryX,
                                                      x + overflowWidth)
             }
-            // Рендер: реакции прижаты к правому краю колонки (`align-items:flex-end`).
+            // Реакции прижаты к краю колонки по стороне автора: своё — правым
+            // краем, чужое — левым.
+            let reactionShift: (CGFloat) -> CGFloat = own
+                ? { lineMax in columnRight - lineMax }
+                : { _ in 0 }
             for index in layout.reactions.indices {
                 let key = layout.reactions[index].minY.rounded()
                 if let lineMax = chipLineMaxes[key] {
-                    layout.reactions[index].origin.x += columnRight - lineMax
+                    layout.reactions[index].origin.x += reactionShift(lineMax)
                 }
             }
             if let overflow = layout.reactionOverflow, let lineMax = chipLineMaxes[overflow.minY.rounded()] {
-                layout.reactionOverflow!.origin.x += columnRight - lineMax
+                layout.reactionOverflow!.origin.x += reactionShift(lineMax)
             }
             y = lineY + chipHeight
         }
@@ -426,32 +433,34 @@ struct TimelineRowMetrics {
         if post.replyCount > 0 {
             y += Self.componentSpacing
             // Чип треда с превью последнего ответа (рендер: «N ответов · Имя: …»),
-            // hug-ширины, прижат к правому краю колонки.
+            // hug-ширины, прижат к краю колонки по стороне автора.
             let chipWidth = min(columnWidth, DrawnText.width(of: threadChipText(for: post)) + 20)
-            layout.replies = CGRect(x: columnRight - chipWidth, y: y, width: chipWidth, height: Self.buttonHeight)
+            let chipX = own ? columnRight - chipWidth : columnLeft
+            layout.replies = CGRect(x: chipX, y: y, width: chipWidth, height: Self.buttonHeight)
             y += Self.buttonHeight
         }
 
         if let state = post.sendState {
             y += Self.componentSpacing
             var pending = PendingLayout(status: .zero)
-            // Pending-статус прижат к правому краю колонки, hug-ширины.
+            // Pending-статус прижат к краю колонки по стороне автора, hug-ширины.
             let statusW = min(accessoryWidth, DrawnText.width(of: statusText(for: state)) + 4)
-            let textX = columnRight - statusW
+            let statusTextHeight = max(fonts.metaLineHeight, DrawnText.height(of: statusText(for: state), width: statusW))
             if Self.showsSpinner(state) {
-                pending.spinner = CGRect(x: textX - Self.spinnerSize - 6,
-                                         y: y + max(0, (fonts.metaLineHeight - Self.spinnerSize) / 2),
-                                          width: Self.spinnerSize, height: Self.spinnerSize)
+                pending.spinner = CGRect(x: own ? columnRight - statusW - Self.spinnerSize - 6 : columnLeft,
+                                        y: y + max(0, (fonts.metaLineHeight - Self.spinnerSize) / 2),
+                                        width: Self.spinnerSize, height: Self.spinnerSize)
             }
-            let textHeight = max(fonts.metaLineHeight, DrawnText.height(of: statusText(for: state), width: statusW))
-            pending.status = CGRect(x: textX, y: y, width: statusW, height: textHeight)
-            y += max(textHeight, pending.spinner == nil ? 0 : Self.spinnerSize)
+            let statusX = own ? columnRight - statusW
+                             : columnLeft + (Self.showsSpinner(state) ? Self.spinnerSize + 6 : 0)
+            pending.status = CGRect(x: statusX, y: y, width: statusW, height: statusTextHeight)
+            y += max(statusTextHeight, pending.spinner == nil ? 0 : Self.spinnerSize)
             if Self.offersRetry(state) || Self.offersUploadDiscard(state) {
                 y += 4
                 if Self.offersRetry(state), post.pendingID != nil {
-                    pending.retry = CGRect(x: columnRight, y: y, width: 0, height: Self.buttonHeight)
+                    pending.retry = CGRect(x: own ? columnRight : columnLeft, y: y, width: 0, height: Self.buttonHeight)
                 }
-                pending.discard = CGRect(x: columnRight, y: y, width: 0, height: Self.buttonHeight)
+                pending.discard = CGRect(x: own ? columnRight : columnLeft, y: y, width: 0, height: Self.buttonHeight)
                 y += Self.buttonHeight
             }
             layout.pending = pending

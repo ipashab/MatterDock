@@ -114,6 +114,13 @@ public actor ServerSession {
     var authenticationEnded = false
     var missingUsers: Set<UserID> = []
     var pendingAlerts: [(event: PostedEvent, cost: Int)] = []
+    /// Превью последнего сообщения для крупной строки сайдбара (рендер OpenDesign):
+    /// обновляется из realtime и дозаполняется запросом одного поста.
+    var channelPreviews: [ChannelID: SidebarPostPreview] = [:]
+    /// Какой пост породил превью канала — для правок и удалений.
+    var channelPreviewStamp: [ChannelID: PostID] = [:]
+    /// Каналы, чьё превью уже запрашивалось; держит backfill одноразовым.
+    var sidebarPreviewFetched: Set<ChannelID> = []
     /// Custom emoji name → id, misses and queued lookups (ServerSession+CustomEmoji.swift).
     var customEmoji: CustomEmojiStore
     // On-device cache (ServerSession+Cache.swift).
@@ -146,6 +153,7 @@ public actor ServerSession {
         case threadRead
         case sidebarCategories(TeamID)
         case categoryUpdate(SidebarCategoryID)
+        case sidebarPreview(ChannelID)
         case teamUnreads
         case alertSender
         case emojiFetch

@@ -83,6 +83,10 @@ extension ServerSession {
             pendingAlerts.removeAll { $0.event.post.id == post.id }
             journal.append(.upsert(post))
             if store.upsert(post, insertIfMissing: false) != .notPresent { markDirty([.timeline, .thread, .search]) }
+            if channelPreviews[post.channelID] != nil, channelPreviewStamp[post.channelID] == post.id {
+                channelPreviews[post.channelID] = sidebarPreview(of: post)
+                markDirty(.sidebar)
+            }
             if collapsedThreadsActive, let root = post.rootID { updateThreadRoot(root) }
         case .postDeleted(let post):
             handleDeleted(post)
@@ -202,6 +206,10 @@ extension ServerSession {
             if isRoot { channel.totalMessageCountRoot += 1; channel.lastRootPostAt = max(channel.lastRootPostAt, post.createAt) }
             channel.lastPostAt = max(channel.lastPostAt, post.createAt)
         }
+        // Превью строки сайдбара — из самого свежего поста канала.
+        channelPreviews[channelID] = sidebarPreview(of: post)
+        channelPreviewStamp[channelID] = post.id
+        sidebarPreviewFetched.insert(channelID)
         if post.userID == me.id {
             // Own posts never count as unread.
             let total = directory.channels[channelID]
@@ -269,6 +277,14 @@ extension ServerSession {
         let at = now()
         journal.append(.deleted(post.id, rootOf: post.rootID, at: at))
         var changed = store.markDeleted(post.id, at: at)
+        // Удалённый последний пост оставляет превью сайдбара пустым; следующий
+        // пост канала (realtime или backfill) заполнит заново.
+        if channelPreviewStamp[post.channelID] == post.id {
+            channelPreviews[post.channelID] = nil
+            channelPreviewStamp[post.channelID] = nil
+            sidebarPreviewFetched.remove(post.channelID)
+            markDirty(.sidebar)
+        }
         if post.rootID == nil {
             // Deleting a root deletes its thread on the server (no per-reply events).
             for reply in store.replies(to: post.id) { changed = store.markDeleted(reply, at: at) || changed }

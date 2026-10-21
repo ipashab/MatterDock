@@ -17,6 +17,18 @@ public enum ConnectionStatus: Hashable, Sendable {
     public var isLive: Bool { self == .connected }
 }
 
+/// Превью последнего сообщения канала для крупной строки сайдбара (рендер
+/// OpenDesign: «Имя: текст…»). `authorName == nil` — префикса нет.
+public struct SidebarPostPreview: Hashable, Sendable {
+    public var authorName: String?
+    public var text: String
+
+    public init(authorName: String? = nil, text: String) {
+        self.authorName = authorName
+        self.text = text
+    }
+}
+
 public struct SidebarChannelRow: Hashable, Sendable, Identifiable {
     public let channelID: ChannelID
     public let displayName: String
@@ -36,12 +48,14 @@ public struct SidebarChannelRow: Hashable, Sendable, Identifiable {
     /// In the Favorites category (or `favorite_channel` preference when categories
     /// are unavailable).
     public let isFavorite: Bool
+    /// Превью последнего сообщения для крупной строки сайдбара (рендер OpenDesign).
+    public let lastPostPreview: SidebarPostPreview?
     public var id: ChannelID { channelID }
 
     public init(channelID: ChannelID, displayName: String, type: ChannelType, isUnread: Bool, mentionCount: Int,
                 isArchived: Bool, isMuted: Bool, partnerStatus: PresenceStatus?, lastPostAt: MattermostTimestamp,
                 partnerID: UserID? = nil, partnerAvatarRevision: Int64 = 0, partnerUsername: String? = nil,
-                isFavorite: Bool = false) {
+                isFavorite: Bool = false, lastPostPreview: SidebarPostPreview? = nil) {
         self.isFavorite = isFavorite
         self.partnerID = partnerID
         self.partnerAvatarRevision = partnerAvatarRevision
@@ -55,6 +69,7 @@ public struct SidebarChannelRow: Hashable, Sendable, Identifiable {
         self.isMuted = isMuted
         self.partnerStatus = partnerStatus
         self.lastPostAt = lastPostAt
+        self.lastPostPreview = lastPostPreview
     }
 }
 

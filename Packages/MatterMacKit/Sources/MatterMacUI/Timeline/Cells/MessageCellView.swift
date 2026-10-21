@@ -679,15 +679,19 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
         if let label = hoverTimeLabel, !label.isHidden, let fonts = host?.rowMetrics.fonts {
             let height = ceil(fonts.metaLineHeight)
             let baseline = max(0, floor((fonts.bodyLineHeight - height) / 2))
-            // Свой пузырь — правее, hover-время уходит в левый gutter до пузыря.
-            let gutterWidth: CGFloat
-            if let bubble = layout.bubble, post?.author.isCurrentUser == true {
-                gutterWidth = max(40, bubble.frame.minX - 8)
+            if let bubble = layout.bubble, let post, !post.author.isCurrentUser {
+                // Чужой пузырь — левее, hover-время уходит в правый gutter за пузырь
+                // (левый занят аватаром).
+                let gutterLeading = bubble.frame.maxX + 8
+                let gutterWidth = max(0, bounds.width - TimelineRowMetrics.horizontalInset - gutterLeading)
+                label.frame = CGRect(x: gutterLeading, y: layout.body.minY + baseline + 1,
+                                     width: gutterWidth, height: height)
             } else {
-                gutterWidth = TimelineRowMetrics.contentLeading - 8
+                // Свой пузырь — правее, hover-время уходит в левый gutter до пузыря.
+                let gutterWidth = max(40, (layout.bubble?.frame.minX ?? 0) - 8)
+                label.frame = CGRect(x: 2, y: layout.body.minY + baseline + 1,
+                                     width: gutterWidth - 2, height: height)
             }
-            label.frame = CGRect(x: 2, y: layout.body.minY + baseline + 1,
-                                 width: gutterWidth - 2, height: height)
         }
         if let frame = layout.linkPreview?.frame { linkPreviewView?.frame = frame }
         if let frame = layout.showMore, let button = showMoreButton {

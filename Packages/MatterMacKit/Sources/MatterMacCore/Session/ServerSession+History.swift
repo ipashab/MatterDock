@@ -545,7 +545,11 @@ extension ServerSession {
         pendingAlerts.removeAll { $0.event.post.channelID == id }
         membershipRevision &+= 1
         tasks.removeValue(forKey: .channelFetch(id))?.cancel()
+        tasks.removeValue(forKey: .sidebarPreview(id))?.cancel()
         memberCounts[id] = nil
+        channelPreviews[id] = nil
+        channelPreviewStamp[id] = nil
+        sidebarPreviewFetched.remove(id)
         let channel = directory.removeChannel(id)
         removeCachedChannel(id)
         if restoredChannel == id { restoredChannel = nil }
