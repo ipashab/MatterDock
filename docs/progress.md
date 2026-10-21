@@ -2391,3 +2391,43 @@ bubble-architecture.md), реализация не начата — следую
   backup-бандл сохранён до удаления старого репо.
 - GitHub: старый репозиторий удалён, создан новый чистый ipashab/MatterDock
   (private), main + тег v0.2.0, релиз с MatterDock-0.2.0.dmg/.zip опубликован заново.
+
+## Сессия: пузыри таймлайна, шаги M-0…M-8 (2026-10-21)
+
+Реализация ADR 0041 (Telegram-style пузыри, вариант B) — эволюция
+MessageCellView/messageLayout, Core-изменение одно и аддитивное.
+
+- M-0 `eba91d7`: ADR 0041 принят.
+- M-1 `6877fb6`: `PostPresentation.isLastInGroup` — lookahead в билдере +
+  `pendingContinuations(...)`, revision-хэшер; группа рвётся сменой дня и
+  unread-границей; builder-тесты (группировка/день/boundary).
+- M-2 `d5a3981`: `TextMeasurer.measure -> (height, usedWidth)`; `RowStyle`
+  в `RenderCacheKey`/`RowLayoutKey` (смена стиля не читает чужие записи);
+  `messageLayout(style:)`, .flat = прежний код.
+- M-3 `609e612`: токены пузырей в TimelinePalette (#2b5278/#182533/#64b5ef,
+  светлые производные); `RenderSurface` в MessageRenderer (тело/secondary/
+  ссылки/код/цитаты/self-mention); «(edited)» уходит из тела в meta при
+  surface ≠ plain.
+- M-4 `01d29e8`: ветка .bubble в messageLayout — BubbleMetrics (радиусы
+  12/4), hug по usedWidth (floor 44 pt), meta-строка в хвосте, реакции/чип
+  под пузырём, pending на стороне автора, сервисные строки — flat.
+- M-5 `db66ad5`: отрисовка в MessageCellView — контур с 4 радиусами, заливка
+  по стороне, severity-рамка self-mention, meta-лейбл, hover-время в gutter
+  стороны автора.
+- M-6 `7cbfc4d`: `MatterMac.bubbleTimeline` в LocalSettings (default off) →
+  `TimelineViewController.usesBubbleStyle` → тот же сброс, что смена
+  размера текста; тумблер в Settings › Appearance.
+- M-7 `0732cd2`: hover-тит только по пузырю (row view передаёт состояние
+  ячейке), flash — полнострочный; hover-бар у края пузыря; бенчмарк
+  `MM_BENCHMARK_BUBBLES=1`.
+- M-8: Release build подписан и установлен в /Applications; live-проход
+  пузырного режима — за пользователем (тумблер в настройках).
+
+Верификация: полный пакет зелёный (236+29+18+185+76); QuickSwitcher
+typingNavigatingOpeningAndClosing — известный флейк параллельного прогона
+(в изоляции зелёный). Бенчмарк (M1 Pro, synthetic large account):
+row layout median 0.100→0.125 ms (flat→bubble), switch apply 7.7→9.0 ms,
+bursts >16.7 ms — 0 в обоих, кэши идентичны, footprint в шуме; soak
+TimelineIntegration + MessageActions — зелёные дважды.
+
+M-9 (дефолт on + сводка docs) — после живого прохода пользователя.
