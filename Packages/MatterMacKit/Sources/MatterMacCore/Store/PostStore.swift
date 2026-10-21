@@ -84,6 +84,12 @@ public struct PostStore: Sendable {
             if merged.lastReplyAt < incoming.lastReplyAt { merged.lastReplyAt = incoming.lastReplyAt }
             if merged.linkPreview == nil, let preview = incoming.linkPreview { merged.linkPreview = preview }
             if merged.customEmojis.isEmpty && !incoming.customEmojis.isEmpty { merged.customEmojis = incoming.customEmojis }
+            // Серверная страница доносит контекст цитаты, которого нет у кэш-сида
+            // старого формата: тот же updateAt — не причина его выбрасывать.
+            if merged.quotedPost == nil, let quote = incoming.quotedPost { merged.quotedPost = quote }
+            if merged.props.quotePostID == nil, let quotedID = incoming.props.quotePostID {
+                merged.props.quotePostID = quotedID
+            }
             if merged == stored { return .unchanged }
         } else {
             merged = incoming
@@ -92,6 +98,10 @@ public struct PostStore: Sendable {
             // Posts in `since`/thread lists may lack metadata; keep a preview for the same text.
             if merged.linkPreview == nil, merged.message == stored.message { merged.linkPreview = stored.linkPreview }
             if merged.customEmojis.isEmpty { merged.customEmojis = stored.customEmojis }
+            if merged.quotedPost == nil, merged.props.quotePostID == nil {
+                merged.quotedPost = stored.quotedPost
+                merged.props.quotePostID = stored.props.quotePostID
+            }
         }
         if merged.pendingPostID == nil { merged.pendingPostID = stored.pendingPostID }
         let reparse = merged.message != stored.message || merged.isDeleted != stored.isDeleted

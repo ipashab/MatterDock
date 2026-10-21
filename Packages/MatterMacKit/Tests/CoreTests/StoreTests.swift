@@ -56,6 +56,39 @@ struct PostStoreTests {
         #expect(store.post(post.id)?.reactions.isEmpty == true)
     }
 
+    @Test func equalRevisionBackfillsQuoteContextFromServerPage() throws {
+        // Кэш-сид старого формата: пост без цитаты. Та же страница с сервера
+        // приходит с embed и props при том же updateAt — контекст обязан дойти.
+        var store = makeStore()
+        let seeded = CoreFixtures.post(1, channel: channel)
+        store.upsert(seeded)
+        var incoming = seeded
+        incoming.quotedPost = QuotedPost(id: PostID(unchecked: CoreFixtures.id("q", 9)),
+                                         userID: CoreFixtures.bob.id, message: "я кстати себе смог выбить премию")
+        incoming.props.quotePostID = PostID(unchecked: CoreFixtures.id("q", 9))
+        let result = store.upsert(incoming)
+        #expect(result == .updated, "контекст цитаты меняет запись")
+        #expect(store.post(incoming.id)?.quotedPost?.message.contains("премию") == true)
+        #expect(store.post(incoming.id)?.props.quotePostID == PostID(unchecked: CoreFixtures.id("q", 9)))
+    }
+
+    @Test func newerEditKeepsQuoteContextWhenIncomingLacksIt() throws {
+        // Реалтайв-событие без metadata не должно терять уже известную цитату.
+        var store = makeStore()
+        var post = CoreFixtures.post(1, channel: channel)
+        post.quotedPost = QuotedPost(id: PostID(unchecked: CoreFixtures.id("q", 9)),
+                                     userID: CoreFixtures.bob.id, message: "цитата")
+        post.props.quotePostID = PostID(unchecked: CoreFixtures.id("q", 9))
+        store.upsert(post)
+        var newer = post
+        newer.updateAt = MattermostTimestamp(milliseconds: post.updateAt.milliseconds + 500)
+        newer.quotedPost = nil
+        newer.props.quotePostID = nil
+        #expect(store.upsert(newer) == .updated)
+        #expect(store.post(newer.id)?.quotedPost?.message == "цитата")
+        #expect(store.post(newer.id)?.props.quotePostID == PostID(unchecked: CoreFixtures.id("q", 9)))
+    }
+
     @Test func pendingPostIDIsPreservedWhenFetchedCopyLacksIt() {
         var store = makeStore()
         var post = CoreFixtures.post(1, channel: channel)
