@@ -46,6 +46,8 @@ public actor ServerSession {
     let alertContinuation: AsyncStream<IncomingMessageAlert>.Continuation
     let threadActivityContinuation: AsyncStream<ThreadActivity>.Continuation
     var threadActivityRevision: UInt64 = 0
+    /// Последние опубликованные тоталы тредов — бейдж папки «Обсуждения» (ADR 0043).
+    var cachedThreadUnread: (threads: Int, mentions: Int) = (0, 0)
     var threadTotalsPending = false
     /// What the current search results represent.
     var searchKind: SearchKind = .terms

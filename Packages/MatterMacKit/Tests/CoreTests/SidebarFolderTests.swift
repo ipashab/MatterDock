@@ -129,9 +129,9 @@ struct SidebarFolderTests {
         await h.waitForCategories()
         let sections = await h.session.sidebarSections(collapsedThreads: false)
         let items = await h.session.folderItems(collapsedThreads: false, sections: sections)
-        // Порядок: «Все» → группы в серверном порядке → «Непрочитанные».
-        #expect(items.map(\.folder) == [.all, .group(work), .group(alpha), .unread])
-        #expect(items.map(\.caption) == ["All", "Work", "Alpha", "Unreads"])
+        // Порядок: «Все» → группы в серверном порядке → «Обсуждения» → «Непрочитанные».
+        #expect(items.map(\.folder) == [.all, .group(work), .group(alpha), .threads, .unread])
+        #expect(items.map(\.caption) == ["All", "Work", "Alpha", "Threads", "Unreads"])
         let all = items[0]
         #expect(all.unreadCount == 1)
         #expect(all.mentionCount == 2)
@@ -142,9 +142,25 @@ struct SidebarFolderTests {
         let alphaItem = items[2]
         #expect(alphaItem.unreadCount == 0)
         #expect(alphaItem.mentionCount == 0)
-        let unread = items[3]
+        let unread = items[4]
         #expect(unread.unreadCount == 1)
         #expect(unread.mentionCount == 2)
+        _ = await h.session.shutdown(revokeServerSession: false)
+    }
+
+    @Test func threadsFolderCarriesTheLastPublishedTotals() async {
+        let h = await SidebarHarness()
+        let sections = await h.session.sidebarSections(collapsedThreads: false)
+        // До первой тредовой активности бейдж «Обсуждений» пуст.
+        var item = await h.session.folderItems(collapsedThreads: false, sections: sections)
+            .first { $0.kind == .threads }
+        #expect(item?.unreadCount == 0 && item?.mentionCount == 0)
+        // Публикация тоталов тредов наполняет бейдж; доступность — флаг CRT.
+        await h.session.publishThreadActivity(unreadThreads: 4, unreadMentions: 2)
+        item = await h.session.folderItems(collapsedThreads: false, sections: sections)
+            .first { $0.kind == .threads }
+        #expect(item?.unreadCount == 4 && item?.mentionCount == 2)
+        #expect(item?.isAvailable == true)
         _ = await h.session.shutdown(revokeServerSession: false)
     }
 }

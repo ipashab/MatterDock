@@ -36,6 +36,7 @@ extension ServerSession {
     /// `changed` bumps the revision (views refetch); plain fetches only update totals,
     /// so a view that reloads on revision changes cannot loop.
     func publishThreadActivity(unreadThreads: Int, unreadMentions: Int, changed: Bool = true) {
+        cachedThreadUnread = (unreadThreads, unreadMentions)
         if changed { threadActivityRevision &+= 1 }
         threadActivityContinuation.yield(ThreadActivity(
             scope: scope, revision: threadActivityRevision, isAvailable: collapsedThreadsActive,

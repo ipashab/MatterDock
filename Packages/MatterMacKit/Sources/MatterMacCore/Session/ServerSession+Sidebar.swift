@@ -320,6 +320,12 @@ extension ServerSession {
                                            caption: category.displayName, categoryID: category.id,
                                            isMuted: category.isMuted, unreadCount: unread, mentionCount: mentions))
         }
+        // «Обсуждения»: тоталы обновляются с каждой публикацией тредовой активности;
+        // событие, меняющее тоталы, обычно сопровождается и публикацией сайдбара.
+        items.append(SidebarFolderItem(folder: .threads, kind: .threads, caption: String(localized: "Threads"),
+                                       unreadCount: cachedThreadUnread.threads,
+                                       mentionCount: cachedThreadUnread.mentions,
+                                       isAvailable: collapsedThreadsActive))
         let unreadRows = allRows.filter { $0.isUnread || $0.mentionCount > 0 }
         items.append(SidebarFolderItem(folder: .unread, kind: .unread, caption: String(localized: "Unreads"),
                                        unreadCount: unreadRows.count,

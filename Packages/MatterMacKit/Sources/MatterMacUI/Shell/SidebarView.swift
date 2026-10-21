@@ -16,7 +16,7 @@ struct SidebarView: View {
             }
             FolderRail(session: session)
             VStack(spacing: 0) {
-                channelList
+                chatColumn
                     .overlay(alignment: .bottom) {
                         VStack(spacing: 8) {
                             if session.connection != .connected {
@@ -59,6 +59,16 @@ struct SidebarView: View {
         .modifier(SidebarTitleToolbar(app: app, session: session, columnWidth: columnWidth))
         .sheet(item: $session.directorySheet) { sheet in
             DirectorySheetView(session: session, sheet: sheet)
+        }
+    }
+
+    /// Контент второй колонки по выбранной папке (ADR 0043): чат-папки — список
+    /// каналов, «Обсуждения» — лента тредов без хедера.
+    @ViewBuilder private var chatColumn: some View {
+        if session.selectedFolder == .threads {
+            ThreadsListView(session: session, context: .folder)
+        } else {
+            channelList
         }
     }
 

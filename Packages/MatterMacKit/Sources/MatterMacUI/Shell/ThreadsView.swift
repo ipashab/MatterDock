@@ -6,7 +6,12 @@ import MatterMacCore
 /// Followed threads (collapsed reply threads), newest reply first. Pages are fetched
 /// on demand and dropped when the view closes; at most `maximumThreads` rows.
 struct ThreadsListView: View {
+    /// Где показывается список: `.detail` — панель ⇧⌘T с хедером и переключателем,
+    /// `.folder` — вторая колонка сайдбара, папка «Обсуждения» (ADR 0043), без хедера.
+    enum Context { case detail, folder }
+
     let session: SessionViewModel
+    var context: Context = .detail
     @State private var threads: [ThreadSummary] = []
     @State private var hasMore = false
     @State private var isLoading = false
@@ -17,8 +22,10 @@ struct ThreadsListView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            header
-            Divider()
+            if context == .detail {
+                header
+                Divider()
+            }
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
