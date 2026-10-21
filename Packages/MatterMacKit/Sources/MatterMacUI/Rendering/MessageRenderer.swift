@@ -19,6 +19,15 @@ extension NSAttributedString.Key {
     nonisolated public static let matterMacEditedMarker = NSAttributedString.Key("MatterMacEditedMarker")
 }
 
+/// Поверхность, на которую рендерится тело сообщения (ADR 0041): `.plain` —
+/// flat-сетка и сервисные строки; `.incoming`/`.outgoing` — пузырь, у которого
+/// меняются базовые цвета (текст, вторичный, ссылки, код и цитаты).
+nonisolated public enum RenderSurface: Hashable, Sendable {
+    case plain
+    case incoming
+    case outgoing
+}
+
 /// Converts a presentation-neutral `MessageDocument` into attributed text for display
 /// with TextKit 1.
 ///
@@ -71,12 +80,15 @@ public final class MessageRenderer {
 
     /// Renders a message body. Collapsed documents render at most
     /// `budget.collapsedMessageCharacters` characters followed by an ellipsis; everything
-    /// else is bounded by `budget.maximumRenderedCharacters`.
-    public func render(_ body: MessageBody, budget: ResourceBudget = .standard, customEmoji: [String: String] = [:]) -> NSAttributedString {
+    /// else is bounded by `budget.maximumRenderedCharacters`. Only `.document` bodies
+    /// honor a bubble surface — system/deleted/unsupported rows are never bubbled.
+    public func render(_ body: MessageBody, budget: ResourceBudget = .standard, customEmoji: [String: String] = [:],
+                       surface: RenderSurface = .plain) -> NSAttributedString {
         switch body {
         case .document(let document, let isCollapsed):
             return render(document, characterLimit: isCollapsed ? budget.collapsedMessageCharacters
-                                                                : budget.maximumRenderedCharacters, customEmoji: customEmoji)
+                                                                : budget.maximumRenderedCharacters,
+                          customEmoji: customEmoji, surface: surface)
         case .system(let text):
             return renderNote(text, limit: budget.maximumRenderedCharacters)
         case .deleted:
@@ -100,12 +112,14 @@ public final class MessageRenderer {
     }
 
     /// Renders a document, stopping after `characterLimit` UTF-16 units (plus an ellipsis).
-    public func render(_ document: MessageDocument, characterLimit: Int? = nil, customEmoji: [String: String] = [:]) -> NSAttributedString {
-        let state = RenderState(limit: characterLimit ?? ResourceBudget.standard.maximumRenderedCharacters, customEmoji: customEmoji)
-        renderBlocks(document.blocks, context: BlockContext(), state: state)
+    public func render(_ document: MessageDocument, characterLimit: Int? = nil, customEmoji: [String: String] = [:],
+                       surface: RenderSurface = .plain) -> NSAttributedString {
+        let state = RenderState(limit: characterLimit ?? ResourceBudget.standard.maximumRenderedCharacters,
+                                customEmoji: customEmoji, surface: surface)
+        renderBlocks(document.blocks, context: BlockContext(surface: surface), state: state)
         let ellipsisStyle = state.lastParagraphStyle ?? baseParagraphStyle(indent: 0, blocks: [], spacingBefore: 0)
         return state.finish(ellipsisAttributes: [
-            .font: fonts.body, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: ellipsisStyle,
+            .font: fonts.body, .foregroundColor: surfaceSecondary(surface), .paragraphStyle: ellipsisStyle,
         ])
     }
 
@@ -138,6 +152,32 @@ public final class MessageRenderer {
         var color: NSColor = .labelColor
         var depth = 0
         var listDepth = 0
+        var surface: RenderSurface = .plain
+
+        init(surface: RenderSurface = .plain) {
+            self.surface = surface
+            self.color = surface == .outgoing ? TimelinePalette.bubbleOutgoingText : .labelColor
+        }
+    }
+
+    // MARK: - Surface colors (ADR 0041 §3.7)
+
+    /// Цвета атрибутов тела в зависимости от поверхности. Входящий пузырь в v1
+    /// использует цвета flat-режима: серый пузырь едва отличается от фона канала.
+    func surfaceText(_ surface: RenderSurface) -> NSColor {
+        surface == .outgoing ? TimelinePalette.bubbleOutgoingText : .labelColor
+    }
+
+    func surfaceSecondary(_ surface: RenderSurface) -> NSColor {
+        surface == .outgoing ? TimelinePalette.bubbleOutgoingSecondary : NSColor.secondaryLabelColor
+    }
+
+    func surfaceLink(_ surface: RenderSurface) -> NSColor {
+        surface == .outgoing ? TimelinePalette.bubbleOutgoingLink : NSColor.linkColor
+    }
+
+    func surfaceInlineCodeBackground(_ surface: RenderSurface) -> NSColor {
+        surface == .outgoing ? TimelinePalette.bubbleOutgoingCodeBackground : TimelinePalette.inlineCodeBackground
     }
 
     var blockSpacing: CGFloat { (fonts.bodyLineHeight * 0.5).rounded() }
@@ -180,7 +220,7 @@ public final class MessageRenderer {
             let continuation = baseParagraphStyle(indent: context.indent, blocks: context.textBlocks, spacingBefore: 0)
             state.setParagraph(first: first, continuation: continuation)
             var style = InlineStyle(size: fonts.headingSize(level: level),
-                                    color: level >= 6 ? NSColor.secondaryLabelColor : context.color)
+                                    color: level >= 6 ? surfaceSecondary(state.surface) : context.color)
             style.bold = true
             renderInlines(inlines, style: style, depth: 0, state: state)
 
@@ -268,12 +308,12 @@ public final class MessageRenderer {
         var attributes: [NSAttributedString.Key: Any] = [
             .font: fonts.font(size: style.mono ? max(style.size - 1, 8) : style.size, bold: style.bold,
                               italic: style.italic, mono: style.mono),
-            .foregroundColor: style.link != nil ? NSColor.linkColor : style.color,
+            .foregroundColor: style.link != nil ? surfaceLink(state.surface) : style.color,
             .paragraphStyle: state.currentParagraphStyle,
         ]
         if style.strike { attributes[.strikethroughStyle] = NSUnderlineStyle.single.rawValue }
         if style.mono {
-            attributes[.backgroundColor] = TimelinePalette.inlineCodeBackground
+            attributes[.backgroundColor] = surfaceInlineCodeBackground(state.surface)
             attributes[.matterMacInlineCode] = true
         }
         if let link = style.link { attributes[.link] = link }
@@ -319,7 +359,7 @@ public final class MessageRenderer {
             case .channelMention(let name):
                 var attributes = attributes(style, state: state)
                 attributes[.font] = fonts.font(size: style.size, bold: true, italic: style.italic, mono: false)
-                attributes[.foregroundColor] = NSColor.linkColor
+                attributes[.foregroundColor] = surfaceLink(state.surface)
                 attributes[.matterMacChannelMention] = name
                 attributes[.cursor] = NSCursor.pointingHand
                 state.append("~" + name, attributes: attributes)
@@ -357,11 +397,13 @@ public final class MessageRenderer {
             // Like the official client: your own mentions and channel-wide mentions are
             // highlighted; the message cell is tinted too.
             attributes[.backgroundColor] = TimelinePalette.mentionHighlight
-            attributes[.foregroundColor] = TimelinePalette.selfMentionText
+            // На синем пузыре системный labelColor не читается — текст белый (ADR 0041).
+            attributes[.foregroundColor] = state.surface == .outgoing ? TimelinePalette.bubbleOutgoingText
+                                                                     : TimelinePalette.selfMentionText
             attributes[.matterMacSelfMention] = true
         } else {
             // Other people's mentions read as links (they open the profile).
-            attributes[.foregroundColor] = NSColor.linkColor
+            attributes[.foregroundColor] = surfaceLink(state.surface)
         }
         if !isSpecial {
             attributes[.matterMacMention] = name
@@ -376,6 +418,8 @@ public final class MessageRenderer {
 final class RenderState {
     let output = NSMutableAttributedString()
     let customEmoji: [String: String]
+    /// Поверхность рендера: меняет цвета базовых атрибутов (ADR 0041).
+    let surface: RenderSurface
     private var remaining: Int
     private(set) var isTruncated = false
     private var firstParagraphStyle: NSParagraphStyle = .default
@@ -384,8 +428,9 @@ final class RenderState {
     private(set) var lastParagraphStyle: NSParagraphStyle?
     private var lastAttributes: [NSAttributedString.Key: Any] = [:]
 
-    init(limit: Int, customEmoji: [String: String] = [:]) {
+    init(limit: Int, customEmoji: [String: String] = [:], surface: RenderSurface = .plain) {
         self.customEmoji = customEmoji
+        self.surface = surface
         remaining = max(limit, 0)
     }
 

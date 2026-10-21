@@ -59,10 +59,18 @@ final class TimelineRowLayouter {
     }
 
     /// Body text plus the trailing "(edited)" marker for edited messages, so it is shown
-    /// on continuation rows too and measured with the text it follows.
+    /// on continuation rows too and measured with the text it follows. На пузырях
+    /// (ADR 0041) маркер не приклеивается к телу — он переезжает в meta внутри
+    /// пузыря (рисуется ячейкой поверх surface-текста).
     private func rendered(_ post: PostPresentation) -> NSAttributedString {
-        let text = renderer.render(post.body, budget: budget, customEmoji: post.customEmoji)
-        guard post.isEdited, case .document(let document, _) = post.body else { return text }
+        let surface: RenderSurface
+        if style == .bubble, case .document = post.body {
+            surface = post.author.isCurrentUser ? .outgoing : .incoming
+        } else {
+            surface = .plain
+        }
+        let text = renderer.render(post.body, budget: budget, customEmoji: post.customEmoji, surface: surface)
+        guard post.isEdited, surface == .plain, case .document(let document, _) = post.body else { return text }
         return renderer.appendingEditedMarker(to: text, inlineAfterParagraph: document.blocks.last.map {
             if case .paragraph = $0 { return true }
             return false

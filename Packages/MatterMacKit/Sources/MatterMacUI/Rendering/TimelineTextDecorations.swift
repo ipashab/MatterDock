@@ -35,6 +35,11 @@ nonisolated final class TimelineTextBlock: NSTextBlock {
     static let attachmentBarWidth: CGFloat = 4
 
     var decoration: Decoration = .none
+    /// Поверхностные переопределения цветов рисования (пузыри, ADR 0041):
+    /// nil — обычная палитра.
+    var backgroundOverride: NSColor?
+    var borderOverride: NSColor?
+    var barOverride: NSColor?
 
     convenience init(decoration: Decoration) {
         self.init()
@@ -43,7 +48,11 @@ nonisolated final class TimelineTextBlock: NSTextBlock {
 
     override func copy(with zone: NSZone? = nil) -> Any {
         let copy = super.copy(with: zone)
-        (copy as? TimelineTextBlock)?.decoration = decoration
+        guard let block = copy as? TimelineTextBlock else { return copy }
+        block.decoration = decoration
+        block.backgroundOverride = backgroundOverride
+        block.borderOverride = borderOverride
+        block.barOverride = barOverride
         return copy
     }
 
@@ -70,14 +79,14 @@ nonisolated final class TimelineTextBlock: NSTextBlock {
         case .code:
             let path = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: Self.cornerRadius,
                                     yRadius: Self.cornerRadius)
-            TimelinePalette.codeBackground.setFill()
+            (backgroundOverride ?? TimelinePalette.codeBackground).setFill()
             path.fill()
-            TimelinePalette.codeBorder.setStroke()
+            (borderOverride ?? TimelinePalette.codeBorder).setStroke()
             path.lineWidth = 1
             path.stroke()
         case .quote:
             let bar = NSRect(x: rect.minX, y: rect.minY, width: Self.barWidth, height: rect.height)
-            TimelinePalette.quoteBar.setFill()
+            (barOverride ?? TimelinePalette.quoteBar).setFill()
             NSBezierPath(roundedRect: bar, xRadius: Self.barWidth / 2, yRadius: Self.barWidth / 2).fill()
         case .attachment(let accent):
             let outline = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: Self.cornerRadius,

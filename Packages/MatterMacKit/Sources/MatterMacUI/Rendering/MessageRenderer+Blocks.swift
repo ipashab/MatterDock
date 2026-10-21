@@ -4,7 +4,12 @@ import MatterMacModels
 extension MessageRenderer {
     func renderCodeBlock(_ code: String, context: BlockContext, spacingBefore: CGFloat, state: RenderState) {
         let block = TimelineTextBlock(decoration: .code)
-        block.backgroundColor = TimelinePalette.codeBackground
+        // На исходящем пузыре подложка кода — светлый слой поверх синего (ADR 0041).
+        let background = state.surface == .outgoing ? TimelinePalette.bubbleOutgoingCodeBackground
+                                                    : TimelinePalette.codeBackground
+        block.backgroundColor = background
+        block.backgroundOverride = state.surface == .outgoing ? background : nil
+        block.borderOverride = state.surface == .outgoing ? TimelinePalette.bubbleOutgoingCodeBorder : nil
         block.setWidth(6, type: .absoluteValueType, for: .padding)
         block.setWidth(8, type: .absoluteValueType, for: .padding, edge: .minX)
         block.setWidth(8, type: .absoluteValueType, for: .padding, edge: .maxX)
@@ -26,7 +31,7 @@ extension MessageRenderer {
         if text.hasSuffix("\n") { text.removeLast() }
         if text.isEmpty { text = " " }
         state.appendMultiline(text, attributes: [
-            .font: fonts.mono, .foregroundColor: NSColor.labelColor, .paragraphStyle: style,
+            .font: fonts.mono, .foregroundColor: context.color, .paragraphStyle: style,
         ], continuationStyle: style)
     }
 
@@ -57,7 +62,7 @@ extension MessageRenderer {
                                                   spacingBefore: 0)
             state.setParagraph(first: first, continuation: continuation)
             state.append((item.task.map { $0 == .done ? "☑" : "☐" } ?? marker) + "\t", attributes: [
-                .font: markerFont, .foregroundColor: NSColor.secondaryLabelColor, .paragraphStyle: first,
+                .font: markerFont, .foregroundColor: surfaceSecondary(state.surface), .paragraphStyle: first,
             ])
             var remaining = item.blocks[...]
             if case .paragraph(let inlines)? = remaining.first {
@@ -91,6 +96,8 @@ extension MessageRenderer {
 
     func renderQuote(_ children: [MarkupBlock], context: BlockContext, spacingBefore: CGFloat, state: RenderState) {
         let block = TimelineTextBlock(decoration: .quote)
+        // Полоса цитаты на исходящем пузыре — светлый слой (ADR 0041).
+        block.barOverride = state.surface == .outgoing ? TimelinePalette.bubbleOutgoingQuoteBar : nil
         block.setWidth(12, type: .absoluteValueType, for: .padding, edge: .minX)
         block.setWidth(spacingBefore, type: .absoluteValueType, for: .margin, edge: .minY)
         var inner = context
@@ -112,7 +119,7 @@ extension MessageRenderer {
 
     func hashtagAttributes(_ tag: String, style: InlineStyle, state: RenderState) -> [NSAttributedString.Key: Any] {
         var result = attributes(style, state: state)
-        result[.foregroundColor] = NSColor.linkColor
+        result[.foregroundColor] = surfaceLink(state.surface)
         return result
     }
 

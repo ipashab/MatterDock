@@ -130,4 +130,62 @@ struct RenderingTests {
         // Память: обе ветки лежат в кэше одновременно, пока не вымоет LRU.
         #expect(caches.rowLayoutCount == 2 && caches.renderCount == 2)
     }
+
+    /// ADR 0041 M-3: исходящая поверхность красит базовые атрибуты в светлые
+    /// токены пузыря (текст, ссылки, инлайн-код), не меняя сам текст.
+    @Test func renderSurfaceRecolorsBaseAttributes() {
+        let renderer = MessageRenderer(currentUsername: "alice")
+        // "link"(0-3) ' ' "code"(5-8) ' ' "@alice"(10-15) ' ' "text"(17-20)
+        let document = MarkupParser.parse("[link](https://example.com) `code` @alice text")
+        let outgoing = renderer.render(document, surface: .outgoing)
+        let plain = renderer.render(document)
+        #expect(outgoing.length == plain.length, "поверхность меняет только цвета, не текст")
+        // Ссылка: акцентный токен пузыря вместо системного linkColor.
+        #expect(outgoing.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+                === TimelinePalette.bubbleOutgoingLink, "ссылка на синем — акцентный токен")
+        #expect(plain.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor === NSColor.linkColor)
+        // Тело: почти-белый токен вместо labelColor; self-mention — такой же белый.
+        #expect(outgoing.attribute(.foregroundColor, at: 17, effectiveRange: nil) as? NSColor
+                === TimelinePalette.bubbleOutgoingText, "текст исходящего — белый токен")
+        #expect(plain.attribute(.foregroundColor, at: 17, effectiveRange: nil) as? NSColor === NSColor.labelColor)
+        #expect(outgoing.attribute(.foregroundColor, at: 10, effectiveRange: nil) as? NSColor
+                === TimelinePalette.bubbleOutgoingText, "self-mention на синем — белый")
+        // Инлайн-код: светлый слой поверх синего.
+        #expect(outgoing.attribute(.backgroundColor, at: 5, effectiveRange: nil) as? NSColor
+                === TimelinePalette.bubbleOutgoingCodeBackground, "инлайн-код — светлый слой")
+        #expect(plain.attribute(.backgroundColor, at: 5, effectiveRange: nil) as? NSColor
+                === TimelinePalette.inlineCodeBackground)
+    }
+
+    /// ADR 0041 M-3: «(edited)» уходит из тела на пузырях и остаётся в flat-режиме.
+    @Test func editedMarkerMovesOutOfBubbleBody() {
+        let caches = TimelineLayoutCaches()
+        let layouter = TimelineRowLayouter(caches: caches, budget: .standard)
+        layouter.context = TimelineContextKey(
+            scope: AccountScope(server: ServerSlotID(1), user: CoreFixtures.me.id),
+            target: .channel(CoreFixtures.channel(1).id))
+        let author = AuthorPresentation(userID: CoreFixtures.me.id, displayName: "Me", username: "me", isBot: false,
+                                        isCurrentUser: true, avatarRevision: 0)
+        let presentation = PostPresentation(
+            postID: PostID(unchecked: "p1"), pendingID: nil, channelID: CoreFixtures.channel(1).id, rootID: nil,
+            author: author, createdAt: MattermostTimestamp(milliseconds: 1), isContinuation: false,
+            body: .document(MarkupParser.parse("hello"), isCollapsed: false),
+            isEdited: true, isPinned: false, files: [], reactions: [], replyCount: 0, showsThreadContext: false,
+            sendState: nil, actions: .none, permalink: nil)
+        let item = TimelineItem(id: TimelineItemID(.post(presentation.postID!)), revision: 1,
+                                content: .post(presentation))
+        func hasEditedMarker(_ text: NSAttributedString) -> Bool {
+            var found = false
+            text.enumerateAttribute(.matterMacEditedMarker, in: NSRange(location: 0, length: text.length)) {
+                value, _, _ in if value != nil { found = true }
+            }
+            return found
+        }
+        layouter.style = .flat
+        let flatText = layouter.bodyText(for: item, post: presentation)
+        #expect(hasEditedMarker(flatText), "flat: маркер остаётся в теле")
+        layouter.style = .bubble
+        let bubbleText = layouter.bodyText(for: item, post: presentation)
+        #expect(!hasEditedMarker(bubbleText), "пузырь: маркер переезжает в meta")
+    }
 }

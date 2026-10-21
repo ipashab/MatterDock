@@ -112,6 +112,46 @@ nonisolated enum TimelinePalette {
         NSColor.labelColor.withAlphaComponent(highContrast ? 0.18 : (isDark ? 0.12 : 0.07))
     }
 
+    // Пузыри таймлайна (ADR 0041). Тёмные значения — из брендового прототипа
+    // (исходящий #2b5278, входящий #182533, акцент #64b5ef); светлые —
+    // производные системных цветов, кроме исходящего пузыря: его тон одинаков
+    // в обеих темах, чтобы белый текст читался всегда.
+    static let bubbleOutgoingBackground = dynamic { _, highContrast in
+        NSColor(srgbRed: 43 / 255, green: 82 / 255, blue: 120 / 255,
+                alpha: highContrast ? 1 : 1)
+    }
+    static let bubbleIncomingBackground = dynamic { isDark, highContrast in
+        isDark ? NSColor(srgbRed: 24 / 255, green: 37 / 255, blue: 51 / 255, alpha: 1)
+               : NSColor.labelColor.withAlphaComponent(highContrast ? 0.10 : 0.06)
+    }
+    /// Почти-белый в обеих темах: НЕ labelColor — на синем в светлой теме серым
+    /// читаться не будет.
+    static let bubbleOutgoingText = dynamic { _, _ in
+        NSColor.white.withAlphaComponent(0.96)
+    }
+    /// Время/«изм.» в исходящем пузыре.
+    static let bubbleOutgoingSecondary = dynamic { _, _ in
+        NSColor.white.withAlphaComponent(0.6)
+    }
+    /// Ссылка на синем: акцент прототипа #64b5ef — различима и на светлом фоне.
+    static let bubbleOutgoingLink = dynamic { _, _ in
+        NSColor(srgbRed: 100 / 255, green: 181 / 255, blue: 239 / 255, alpha: 1)
+    }
+    static let bubbleOutgoingCodeBackground = dynamic { _, highContrast in
+        NSColor.white.withAlphaComponent(highContrast ? 0.22 : 0.14)
+    }
+    static let bubbleOutgoingCodeBorder = dynamic { _, _ in
+        NSColor.white.withAlphaComponent(0.30)
+    }
+    static let bubbleOutgoingQuoteBar = dynamic { _, _ in
+        NSColor.white.withAlphaComponent(0.45)
+    }
+    /// Рамка serious-сообщения (self-mention) на пузыре; цвет — как у полосы
+    /// полноширинной подсветки в flat-режиме.
+    static let bubbleSeverityBorder = dynamic { _, highContrast in
+        highContrast ? NSColor.systemOrange : NSColor.systemYellow
+    }
+
     /// Stable avatar placeholder tint derived from the user id (no randomness).
     static func avatarTint(for seed: String) -> NSColor {
         let palette: [NSColor] = [
