@@ -12,8 +12,8 @@ ARCHS = $(ARCHS_STANDARD)
 // Версионирование MatterDock: CalVer без nightly-каналов — 0.МЕСЯЦ.РЕЛИЗ.
 // Текущая сборка всегда $(MARKETING_VERSION)-dev; релизом считается пересборка
 // с bump'нутым MARKETING_VERSION (см. FORK.md, «Обновления»).
-MARKETING_VERSION = 0.2.0
-CURRENT_PROJECT_VERSION = 2
+MARKETING_VERSION = 0.10.1
+CURRENT_PROJECT_VERSION = 3
 MATTERMAC_VERSION_LABEL = $(MARKETING_VERSION)-dev
 
 // Swift 6 language mode implies complete strict concurrency checking; stated
