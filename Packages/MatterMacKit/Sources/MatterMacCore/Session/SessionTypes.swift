@@ -481,3 +481,73 @@ public struct ThreadsPage: Sendable {
         self.unreadMentions = unreadMentions
     }
 }
+
+// MARK: - Фид упоминаний (папка «Упоминания и реакции», ADR 0043)
+
+/// Одна строка папки «Упоминания и реакции»: пост, где меня упомянули
+/// (`@username`, поиск как в официальном клиенте), либо реакция на мой
+/// резидентный пост (только realtime — серверного запроса для этого нет).
+/// Текст — короткое превью; рендер готов из Core, другого источника правды нет.
+/// `author*` — автор строки: у упоминания автор поста, у реакции — реактор.
+public struct MentionFeedItem: Hashable, Sendable, Identifiable {
+    /// Стабильная строка вида `post|emoji|reactor`: один пост может быть и
+    /// упоминанием, и получить реакции (тогда у реакции своё id).
+    public let id: String
+    public let kind: Kind
+    public let postID: PostID
+    public let channelID: ChannelID
+    /// Корень треда: клик открывает тред, а не канал.
+    public let rootID: PostID?
+    public let channelName: String
+    public let authorID: UserID
+    public let authorName: String
+    public let authorAvatarRevision: Int64
+    public let preview: String
+    public let createdAt: MattermostTimestamp
+    /// Короткое имя эмодзи реакции (для строк-реакций); UI рендерит глифом.
+    public let reactionName: String?
+
+    public enum Kind: Hashable, Sendable { case mention, reaction }
+
+    public init(id: String, kind: Kind, postID: PostID, channelID: ChannelID, rootID: PostID?, channelName: String,
+                authorID: UserID, authorName: String, authorAvatarRevision: Int64, preview: String,
+                createdAt: MattermostTimestamp, reactionName: String? = nil) {
+        self.id = id
+        self.kind = kind
+        self.postID = postID
+        self.channelID = channelID
+        self.rootID = rootID
+        self.channelName = channelName
+        self.authorID = authorID
+        self.authorName = authorName
+        self.authorAvatarRevision = authorAvatarRevision
+        self.preview = preview
+        self.createdAt = createdAt
+        self.reactionName = reactionName
+    }
+}
+
+/// Снапшот фида упоминаний, публикуемый рельсой папок и realtime-событиями.
+public struct MentionFeedSnapshot: Hashable, Sendable {
+    public enum State: Hashable, Sendable {
+        case idle
+        case searching
+        case ready
+        case failed(UserFacingError)
+    }
+
+    public let scope: AccountScope
+    public let revision: UInt64
+    public let state: State
+    /// Реакции — свежими первыми; упоминания — в порядке поиска (новее выше).
+    public let items: [MentionFeedItem]
+    public let canLoadMore: Bool
+
+    public init(scope: AccountScope, revision: UInt64, state: State, items: [MentionFeedItem], canLoadMore: Bool) {
+        self.scope = scope
+        self.revision = revision
+        self.state = state
+        self.items = items
+        self.canLoadMore = canLoadMore
+    }
+}

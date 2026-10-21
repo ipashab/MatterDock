@@ -68,6 +68,8 @@ public final class SessionViewModel {
         app?.environment.settings.selectedSidebarFolder = folder.rawValue
     }
     public private(set) var threadActivity: ThreadActivity?
+    /// Фид папки «Упоминания и реакции» (ADR 0043).
+    public private(set) var mentionFeed: MentionFeedSnapshot?
     /// Browse/create channels, new direct or group message, add members.
     public var directorySheet: DirectorySheet?
     var forwardMessage: ForwardMessageModel?
@@ -214,6 +216,12 @@ public final class SessionViewModel {
             }
         })
         subscriptions.append(Task { [weak self] in
+            for await feed in session.mentionFeedUpdates {
+                guard let self, !self.isDetached, !self.requiresAuthentication, feed.scope == scope else { continue }
+                self.mentionFeed = feed
+            }
+        })
+        subscriptions.append(Task { [weak self] in
             for await alert in session.alerts {
                 guard let self, !self.isDetached, !self.requiresAuthentication, alert.scope == scope else { continue }
                 self.app?.deliver(alert)
@@ -357,6 +365,19 @@ public final class SessionViewModel {
     public func followedThreads(unreadOnly: Bool, before: PostID?) async throws(UserFacingError) -> ThreadsPage {
         guard !isDetached, !requiresAuthentication else { throw .authenticationRequired }
         return try await session.followedThreads(unreadOnly: unreadOnly, before: before)
+    }
+
+    /// Перезагрузка фида упоминаний (поиск `@username`); вызывается при каждом
+    /// показе папки — как в официальном клиенте, свежее данных не бывает.
+    public func reloadMentionFeed() {
+        guard !isDetached, !requiresAuthentication else { return }
+        Task { await session.reloadMentionFeed() }
+    }
+
+    /// Следующая страница фида упоминаний (кнопка «Ещё»).
+    public func loadMoreMentionFeed() {
+        guard !isDetached, !requiresAuthentication else { return }
+        Task { await session.loadMoreMentionFeed() }
     }
 
     public func isFollowingThread(_ root: PostID) async -> Bool? {

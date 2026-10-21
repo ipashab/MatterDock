@@ -3491,6 +3491,16 @@
         }
       }
     },
+    "Load More Mentions": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ещё упоминания"
+          }
+        }
+      }
+    },
     "Load newer messages": {
       "localizations": {
         "ru": {
@@ -3779,6 +3789,26 @@
         }
       }
     },
+    "Mentions": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Упоминания"
+          }
+        }
+      }
+    },
+    "Mentions Unavailable": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Упоминания недоступны"
+          }
+        }
+      }
+    },
     "Mentions and keywords": {
       "localizations": {
         "ru": {
@@ -3895,6 +3925,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Сообщения в пузырях в стиле Telegram; выключите — вернётся классическая плоская лента."
+          }
+        }
+      }
+    },
+    "Messages that mention you and reactions to your messages appear here.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Здесь появляются сообщения с вашим упоминанием и реакции на ваши сообщения."
           }
         }
       }
@@ -4149,6 +4189,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Сервер Mattermost не ответил по адресу %@. Проверьте адрес, включая путь, например /chat."
+          }
+        }
+      }
+    },
+    "No Mentions": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет упоминаний"
           }
         }
       }
@@ -4469,6 +4519,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Открыть обсуждение"
+          }
+        }
+      }
+    },
+    "Open the message that mentioned you": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть упомянувшее вас сообщение"
+          }
+        }
+      }
+    },
+    "Open the message that was reacted to": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открыть сообщение, на которое поставили реакцию"
           }
         }
       }
@@ -7191,6 +7261,16 @@
         }
       }
     },
+    "Threads Are Off": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Обсуждения выключены"
+          }
+        }
+      }
+    },
     "Threads Unavailable": {
       "localizations": {
         "ru": {
@@ -8097,6 +8177,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "приватный канал"
+          }
+        }
+      }
+    },
+    "reaction": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "реакция"
           }
         }
       }

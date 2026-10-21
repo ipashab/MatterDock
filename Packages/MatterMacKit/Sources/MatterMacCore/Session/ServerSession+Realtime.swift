@@ -97,9 +97,11 @@ extension ServerSession {
         case .reactionAdded(let reaction):
             journal.append(.reaction(reaction, added: true))
             if store.applyReaction(reaction, added: true) { markDirty([.timeline, .thread]) }
+            mentionFeedReactionAdded(reaction)
         case .reactionRemoved(let reaction):
             journal.append(.reaction(reaction, added: false))
             if store.applyReaction(reaction, added: false) { markDirty([.timeline, .thread]) }
+            mentionFeedReactionRemoved(reaction)
         case .typing(let user, let channel, _):
             guard user != me.id else { return }
             var entries = typing[channel] ?? [:]

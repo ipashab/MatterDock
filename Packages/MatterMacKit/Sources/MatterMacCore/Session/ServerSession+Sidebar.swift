@@ -330,6 +330,11 @@ extension ServerSession {
         // бейдж кол-во подставляет вью-модель, тут — только место в порядке рельсы.
         items.append(SidebarFolderItem(folder: .drafts, kind: .drafts,
                                        caption: String(localized: "Drafts")))
+        // «Упоминания и реакции»: бейдж — все непрочитанные упоминания (каналы
+        // плюс треды из кэша тоталов).
+        items.append(SidebarFolderItem(folder: .mentions, kind: .mentions,
+                                       caption: String(localized: "Mentions"),
+                                       mentionCount: all.mentions + cachedThreadUnread.mentions))
         let unreadRows = allRows.filter { $0.isUnread || $0.mentionCount > 0 }
         items.append(SidebarFolderItem(folder: .unread, kind: .unread, caption: String(localized: "Unreads"),
                                        unreadCount: unreadRows.count,

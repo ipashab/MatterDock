@@ -129,9 +129,9 @@ struct SidebarFolderTests {
         await h.waitForCategories()
         let sections = await h.session.sidebarSections(collapsedThreads: false)
         let items = await h.session.folderItems(collapsedThreads: false, sections: sections)
-        // Порядок: «Все» → группы → «Обсуждения» → «Черновики» → «Непрочитанные».
-        #expect(items.map(\.folder) == [.all, .group(work), .group(alpha), .threads, .drafts, .unread])
-        #expect(items.map(\.caption) == ["All", "Work", "Alpha", "Threads", "Drafts", "Unreads"])
+        // Порядок: «Все» → группы → «Обсуждения» → «Черновики» → «Упоминания» → «Непрочитанные».
+        #expect(items.map(\.folder) == [.all, .group(work), .group(alpha), .threads, .drafts, .mentions, .unread])
+        #expect(items.map(\.caption) == ["All", "Work", "Alpha", "Threads", "Drafts", "Mentions", "Unreads"])
         let all = items[0]
         #expect(all.unreadCount == 1)
         #expect(all.mentionCount == 2)
@@ -142,11 +142,13 @@ struct SidebarFolderTests {
         let alphaItem = items[2]
         #expect(alphaItem.unreadCount == 0)
         #expect(alphaItem.mentionCount == 0)
-        let unread = items[5]
+        let unread = items[6]
         #expect(unread.unreadCount == 1)
         #expect(unread.mentionCount == 2)
         // Бейдж черновиков наполняет вью-модель (хранилище в UI); здесь — нули.
         #expect(items[4].unreadCount == 0 && items[4].mentionCount == 0)
+        // Бейдж упоминаний — сумма по каналам плюс тредовые тоталы (тут нуль).
+        #expect(items[5].mentionCount == 2 && items[5].unreadCount == 0)
         _ = await h.session.shutdown(revokeServerSession: false)
     }
 

@@ -33,6 +33,8 @@ public actor ServerSession {
     public nonisolated let alerts: AsyncStream<IncomingMessageAlert>
     /// Unread totals of followed threads (collapsed reply threads) for the Threads view.
     public nonisolated let threadActivity: AsyncStream<ThreadActivity>
+    /// Фид папки «Упоминания и реакции» (ADR 0043): поиск `@username` + realtime-реакции.
+    public nonisolated let mentionFeedUpdates: AsyncStream<MentionFeedSnapshot>
     /// Server-side display and notification settings (latest value).
     public nonisolated let accountSettingsUpdates: AsyncStream<AccountSettingsSnapshot>
 
@@ -45,6 +47,7 @@ public actor ServerSession {
     let noticeContinuation: AsyncStream<SessionNotice>.Continuation
     let alertContinuation: AsyncStream<IncomingMessageAlert>.Continuation
     let threadActivityContinuation: AsyncStream<ThreadActivity>.Continuation
+    let mentionFeedUpdatesContinuation: AsyncStream<MentionFeedSnapshot>.Continuation
     var threadActivityRevision: UInt64 = 0
     /// Последние опубликованные тоталы тредов — бейдж папки «Обсуждения» (ADR 0043).
     var cachedThreadUnread: (threads: Int, mentions: Int) = (0, 0)
@@ -86,6 +89,13 @@ public actor ServerSession {
     var pendingScroll: [TimelineTarget: TimelineScrollRequest] = [:]
     var lastViewedOnOpen: [ChannelID: MattermostTimestamp] = [:]
     var searchState = SearchModel()
+    /// Фид папки «Упоминания и реакции» (ADR 0043): строки + поисковый прогресс.
+    var mentionFeedItems: [MentionFeedItem] = []
+    var mentionFeedRevision: UInt64 = 0
+    var mentionFeedHasMore = false
+    var mentionFeedPage = 0
+    /// Посты поиска упоминаний, удержанные в сторе (учёт release при перезагрузке).
+    var mentionFeedRetainedPosts: Set<PostID> = []
     /// Explicit user opt-in (in memory): alerts carry a short plain-text preview.
     var alertPreviewsEnabled = false
 
@@ -157,6 +167,7 @@ public actor ServerSession {
         case categoryUpdate(SidebarCategoryID)
         case sidebarPreview(ChannelID)
         case teamUnreads
+        case mentionFeedPage
         case alertSender
         case emojiFetch
         case cacheWrite
@@ -191,6 +202,7 @@ public actor ServerSession {
         (notices, noticeContinuation) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(8))
         (alerts, alertContinuation) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(8))
         (threadActivity, threadActivityContinuation) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(1))
+        (mentionFeedUpdates, mentionFeedUpdatesContinuation) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(1))
         (accountSettingsUpdates, accountSettingsContinuation) = AsyncStream.makeStream(bufferingPolicy: .bufferingNewest(1))
         directory.pin(me)
     }
