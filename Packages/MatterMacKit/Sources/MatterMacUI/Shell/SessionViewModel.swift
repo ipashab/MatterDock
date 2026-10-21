@@ -55,6 +55,11 @@ public final class SessionViewModel {
     func groupIcon(categoryID: String) -> String? {
         app?.environment.settings.sidebarGroupIcons[categoryID]
     }
+    /// Сколько незавершённых черновиков у этой сессии (бейдж папки «Черновики»;
+    /// хранилище — MainActor в UI, Core считал бы через него, поэтому живое число тут).
+    public var draftsFolderCount: Int {
+        app?.environment.drafts.nonEmptyKeys(for: scope).count ?? 0
+    }
 
     /// Выбор папки; отсутствующая (например, удалённая на сервере) папка — no-op.
     func selectFolder(_ folder: SidebarFolderID) {

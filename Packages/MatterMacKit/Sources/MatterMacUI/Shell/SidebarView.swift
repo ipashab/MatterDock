@@ -63,11 +63,14 @@ struct SidebarView: View {
     }
 
     /// Контент второй колонки по выбранной папке (ADR 0043): чат-папки — список
-    /// каналов, «Обсуждения» — лента тредов без хедера.
+    /// каналов, «Обсуждения» — лента тредов без хедера, «Черновики» — черновики.
     @ViewBuilder private var chatColumn: some View {
-        if session.selectedFolder == .threads {
+        switch session.selectedFolder {
+        case .threads:
             ThreadsListView(session: session, context: .folder)
-        } else {
+        case .drafts:
+            DraftsFolderView(app: app, session: session)
+        default:
             channelList
         }
     }

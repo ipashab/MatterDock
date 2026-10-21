@@ -326,6 +326,10 @@ extension ServerSession {
                                        unreadCount: cachedThreadUnread.threads,
                                        mentionCount: cachedThreadUnread.mentions,
                                        isAvailable: collapsedThreadsActive))
+        // «Черновики»: черновики живут в MainActor-хранилище UI и недоступны отсюда;
+        // бейдж кол-во подставляет вью-модель, тут — только место в порядке рельсы.
+        items.append(SidebarFolderItem(folder: .drafts, kind: .drafts,
+                                       caption: String(localized: "Drafts")))
         let unreadRows = allRows.filter { $0.isUnread || $0.mentionCount > 0 }
         items.append(SidebarFolderItem(folder: .unread, kind: .unread, caption: String(localized: "Unreads"),
                                        unreadCount: unreadRows.count,

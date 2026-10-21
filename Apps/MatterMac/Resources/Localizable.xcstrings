@@ -1905,6 +1905,16 @@
         }
       }
     },
+    "Channel …": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Канал …"
+          }
+        }
+      }
+    },
     "Channel-wide mentions are turned off for your account in Settings › Notifications.": {
       "localizations": {
         "ru": {
@@ -2323,6 +2333,16 @@
         }
       }
     },
+    "Continue writing": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Продолжить писать"
+          }
+        }
+      }
+    },
     "Conversations": {
       "localizations": {
         "ru": {
@@ -2593,6 +2613,16 @@
         }
       }
     },
+    "Discard this draft?": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отбросить этот черновик?"
+          }
+        }
+      }
+    },
     "Discard…": {
       "localizations": {
         "ru": {
@@ -2697,6 +2727,16 @@
         }
       }
     },
+    "Drafts": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Черновики"
+          }
+        }
+      }
+    },
     "Drafts and unconfirmed sends stay in memory until you sign out or quit. Interrupted sends may already be on the server; check before resending.": {
       "localizations": {
         "ru": {
@@ -2773,6 +2813,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Изменено %@"
+          }
+        }
+      }
+    },
+    "Edited message": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Редактируемое сообщение"
           }
         }
       }
@@ -3091,6 +3141,16 @@
         }
       }
     },
+    "Forwarding draft": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Черновик пересылки"
+          }
+        }
+      }
+    },
     "Frequently Used": {
       "localizations": {
         "ru": {
@@ -3237,6 +3297,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Больше не существует или недоступно для вас."
+          }
+        }
+      }
+    },
+    "Its text and attachments will be removed from this session. This cannot undo anything already received by the server.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Текст и вложения будут удалены из этой сессии. Отменить то, что сервер уже получил, это не может."
           }
         }
       }
@@ -4149,6 +4219,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Беседы не найдены. Попробуйте другой канал или собеседника."
+          }
+        }
+      }
+    },
+    "No drafts": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нет черновиков"
           }
         }
       }
@@ -7271,6 +7351,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Незащищённое соединение"
+          }
+        }
+      }
+    },
+    "Unfinished messages wait here. Click one to continue writing; drafts stay only until you sign out or quit.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Незаконченные сообщения ждут здесь. Нажмите на черновик, чтобы продолжить; черновики живут только до выхода или завершения."
           }
         }
       }

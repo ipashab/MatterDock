@@ -24,7 +24,7 @@ struct BubbleLayoutTests {
                                                     isCollapsed: false),
                       files: [FileInfo] = [], reactions: [ReactionGroup] = [], replyCount: Int = 0,
                       sendState: SendState? = nil, showsThreadContext: Bool = false) -> PostPresentation {
-        var presentation = PostPresentation(
+        let presentation = PostPresentation(
             postID: PostID(unchecked: "p1"), pendingID: nil, channelID: CoreFixtures.channel(1).id, rootID: nil,
             author: author(own: own), createdAt: MattermostTimestamp(milliseconds: 1_700_000_000_000),
             isContinuation: continuation, body: body, isEdited: edited, isPinned: false, files: files,

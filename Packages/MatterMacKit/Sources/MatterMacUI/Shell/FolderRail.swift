@@ -89,17 +89,22 @@ private struct FolderRailButton: View {
         }
     }
 
-    /// Красная капсула — упоминания; точка — просто непрочитанное (стиль rail-кнопок).
+    /// Красная капсула — упоминания (у «Черновиков» — живое число черновиков из
+    /// вью-модели: хранилище черновиков в UI); точка — просто непрочитанное.
+    private var badgeCount: Int {
+        item.kind == .drafts ? session.draftsFolderCount : item.mentionCount
+    }
+
     @ViewBuilder private var badge: some View {
-        if item.mentionCount > 0 {
-            Text(verbatim: item.mentionCount > 99 ? "99+" : "\(item.mentionCount)")
+        if badgeCount > 0 {
+            Text(verbatim: badgeCount > 99 ? "99+" : "\(badgeCount)")
                 .font(.system(size: 9, weight: .bold))
                 .padding(.horizontal, 4)
                 .padding(.vertical, 1)
                 .background(Capsule().fill(Color.red))
                 .foregroundStyle(.white)
                 .offset(x: 8, y: -6)
-        } else if item.unreadCount > 0 {
+        } else if item.kind != .drafts, item.unreadCount > 0 {
             Circle()
                 .fill(Color.primary)
                 .frame(width: 6, height: 6)
@@ -109,7 +114,12 @@ private struct FolderRailButton: View {
 
     private var accessibilityText: String {
         var parts = [item.caption]
-        if item.mentionCount > 0 { parts.append(String(localized: "\(item.mentionCount) mentions")) }
+        if item.kind == .drafts {
+            if session.draftsFolderCount > 0 {
+                parts.append(session.draftsFolderCount == 1 ? String(localized: "1 draft")
+                                                            : String(localized: "\(session.draftsFolderCount) drafts"))
+            }
+        } else if item.mentionCount > 0 { parts.append(String(localized: "\(item.mentionCount) mentions")) }
         else if item.unreadCount > 0 { parts.append(String(localized: "unread")) }
         return parts.joined(separator: ", ")
     }

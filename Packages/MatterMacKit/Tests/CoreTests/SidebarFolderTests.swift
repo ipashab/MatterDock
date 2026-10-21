@@ -129,9 +129,9 @@ struct SidebarFolderTests {
         await h.waitForCategories()
         let sections = await h.session.sidebarSections(collapsedThreads: false)
         let items = await h.session.folderItems(collapsedThreads: false, sections: sections)
-        // Порядок: «Все» → группы в серверном порядке → «Обсуждения» → «Непрочитанные».
-        #expect(items.map(\.folder) == [.all, .group(work), .group(alpha), .threads, .unread])
-        #expect(items.map(\.caption) == ["All", "Work", "Alpha", "Threads", "Unreads"])
+        // Порядок: «Все» → группы → «Обсуждения» → «Черновики» → «Непрочитанные».
+        #expect(items.map(\.folder) == [.all, .group(work), .group(alpha), .threads, .drafts, .unread])
+        #expect(items.map(\.caption) == ["All", "Work", "Alpha", "Threads", "Drafts", "Unreads"])
         let all = items[0]
         #expect(all.unreadCount == 1)
         #expect(all.mentionCount == 2)
@@ -142,9 +142,11 @@ struct SidebarFolderTests {
         let alphaItem = items[2]
         #expect(alphaItem.unreadCount == 0)
         #expect(alphaItem.mentionCount == 0)
-        let unread = items[4]
+        let unread = items[5]
         #expect(unread.unreadCount == 1)
         #expect(unread.mentionCount == 2)
+        // Бейдж черновиков наполняет вью-модель (хранилище в UI); здесь — нули.
+        #expect(items[4].unreadCount == 0 && items[4].mentionCount == 0)
         _ = await h.session.shutdown(revokeServerSession: false)
     }
 

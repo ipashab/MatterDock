@@ -1,6 +1,7 @@
 public import Foundation
 public import MatterMacModels
 public import MattermostAPI
+public import Observation
 
 /// A session-only draft: composer text plus selection, kept in RAM while the process
 /// runs. Never written to disk, UserDefaults, or server draft endpoints.
@@ -36,7 +37,10 @@ public struct DraftRecoveryItem: Identifiable, Sendable {
 ///
 /// Accounting goes through `UnsentWorkLedger`; drafts are never evicted. The composer
 /// consults `remainingBytes(for:)` before accepting input that would grow a draft.
+/// Observable, so live lists (the sidebar's folder «Черновики», ADR 0043) re-render
+/// as the composer saves on every change.
 @MainActor
+@Observable
 public final class DraftStore {
     private var drafts: [DraftKey: Draft] = [:]
     private var revisions: [DraftKey: UUID] = [:]
