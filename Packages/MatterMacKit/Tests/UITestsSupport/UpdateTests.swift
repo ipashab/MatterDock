@@ -97,7 +97,7 @@ struct UpdateTests {
     // MARK: Archives and bundles
 
     /// A minimal ad-hoc-signed MatterMac-shaped bundle.
-    static func makeApp(at url: URL, build: Int, identifier: String = "dev.frnoch.mattermac") throws {
+    static func makeApp(at url: URL, build: Int, identifier: String = "com.matterdock.app") throws {
         let contents = url.appendingPathComponent("Contents")
         try FileManager.default.createDirectory(at: contents.appendingPathComponent("MacOS"), withIntermediateDirectories: true)
         let info: [String: Any] = ["CFBundleIdentifier": identifier, "CFBundlePackageType": "APPL",
@@ -133,7 +133,7 @@ struct UpdateTests {
     static func sha256(_ data: Data) -> String { SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined() }
 
     /// The ad-hoc test bundles satisfy an identifier-only requirement.
-    static let testRequirement = #"identifier "dev.frnoch.mattermac""#
+    static let testRequirement = #"identifier "com.matterdock.app""#
 
     @Test func preparedUpdatesAreCheckedBeforeUse() async throws {
         let root = try Self.temporaryDirectory()

@@ -1,8 +1,8 @@
 // App.xcconfig — settings for the MatterMac application target only
 // (layered on top of the project-level Debug/Release.xcconfig).
 
-PRODUCT_NAME = MatterMac
-PRODUCT_BUNDLE_IDENTIFIER = dev.frnoch.mattermac
+PRODUCT_NAME = MatterDock
+PRODUCT_BUNDLE_IDENTIFIER = com.matterdock.app
 GENERATE_INFOPLIST_FILE = NO
 INFOPLIST_FILE = Configuration/Info.plist
 
@@ -11,8 +11,8 @@ INFOPLIST_FILE = Configuration/Info.plist
 SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor
 SWIFT_EMIT_LOC_STRINGS = YES
 
-// AppIcon (Swift orange) for local and production builds; the release workflow
-// passes MATTERMAC_APP_ICON=AppIconNightly (purple) for nightlies.
+// Иконка MatterDock (тёмный градиент + белый диалог). Ночной вариант из upstream
+// удалён: форк распространяется пересборкой, каналов сборки нет.
 MATTERMAC_APP_ICON = AppIcon
 ASSETCATALOG_COMPILER_APPICON_NAME = $(MATTERMAC_APP_ICON)
 ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor

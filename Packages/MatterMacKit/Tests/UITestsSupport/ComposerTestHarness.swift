@@ -170,7 +170,7 @@ final class ComposerHarness {
 
     /// A private pasteboard, never the user's general pasteboard.
     static func privatePasteboard() -> NSPasteboard {
-        let pasteboard = NSPasteboard(name: NSPasteboard.Name("org.mattermac.tests.composer.\(UUID().uuidString)"))
+        let pasteboard = NSPasteboard(name: NSPasteboard.Name("com.matterdock.tests.composer.\(UUID().uuidString)"))
         pasteboard.clearContents()
         return pasteboard
     }

@@ -127,7 +127,7 @@ public final class SystemEventMonitor {
             let status = path.status
             Task { @MainActor in self?.pathChanged(status) }
         }
-        pathMonitor.start(queue: DispatchQueue(label: "org.mattermac.path", qos: .utility))
+        pathMonitor.start(queue: DispatchQueue(label: "com.matterdock.path", qos: .utility))
     }
 
     private func pathChanged(_ status: NWPath.Status) {

@@ -6,9 +6,9 @@ import Security
 /// (`Apps/MatterMac/UpdateInstaller`). Only Foundation and Security.
 public enum UpdateSupport {
     /// The embedded XPC service's bundle identifier (`Contents/XPCServices`).
-    public static let installerServiceName = "dev.frnoch.mattermac.UpdateInstaller"
-    public static let bundleIdentifier = "dev.frnoch.mattermac"
-    public static let teamIdentifier = "ZJ37A69485"
+    public static let installerServiceName = "com.matterdock.app.UpdateInstaller"
+    public static let bundleIdentifier = "com.matterdock.app"
+    public static let teamIdentifier = ""
 
     /// What a downloaded update must satisfy: MatterMac's bundle identifier, signed
     /// with the project's Developer ID, and notarized by Apple.

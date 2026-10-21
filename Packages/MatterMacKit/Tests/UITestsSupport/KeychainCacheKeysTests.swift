@@ -9,7 +9,7 @@ import TestSupport
 @Suite("Keychain cache keys", .enabled(if: ProcessInfo.processInfo.environment["MM_KEYCHAIN_TESTS"] == "1"))
 struct KeychainCacheKeysTests {
     @Test func createsReadsAndRemovesPerAccountKeys() async throws {
-        let keys = KeychainCacheKeys(service: "org.mattermac.tests.cache." + UUID().uuidString)
+        let keys = KeychainCacheKeys(service: "com.matterdock.tests.cache." + UUID().uuidString)
         let first = CacheAccount(endpoint: CoreFixtures.endpoint, user: CoreFixtures.me.id)
         let second = CacheAccount(endpoint: CoreFixtures.endpoint, user: CoreFixtures.bob.id)
         #expect(await keys.key(for: first, create: false) == nil)

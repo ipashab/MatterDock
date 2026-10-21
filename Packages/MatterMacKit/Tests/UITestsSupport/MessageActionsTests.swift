@@ -84,7 +84,11 @@ struct MessageActionsTests {
     func hover(_ f: Fixture, row: Int) throws {
         let rect = f.controller.tableView.rect(ofRow: row)
         let point = f.controller.tableView.convert(NSPoint(x: rect.midX, y: rect.midY), to: nil)
-        let event = try #require(NSEvent.mouseEvent(with: .mouseMoved, location: point, modifierFlags: [], timestamp: 0,
+        try hover(f, at: point)
+    }
+
+    func hover(_ f: Fixture, at pointInWindow: NSPoint) throws {
+        let event = try #require(NSEvent.mouseEvent(with: .mouseMoved, location: pointInWindow, modifierFlags: [], timestamp: 0,
                                                     windowNumber: f.window.windowNumber, context: nil, eventNumber: 0,
                                                     clickCount: 0, pressure: 0))
         f.controller.hoverMouseMoved(event)
@@ -303,9 +307,91 @@ struct MessageActionsTests {
         let f = makeTimeline([presentation(post(1), reactions: reactions)])
         defer { f.close() }
         let chips = try cell(f).subviews.compactMap { $0 as? ReactionChipView }.filter { !$0.isHidden }
-        #expect(chips.map(\.toolTip) == ["You, Bob and 3 others reacted with :+1:", "Bob and Carol reacted with :tada:",
-                                         "Bob and 1 other reacted with :heart:"])
-        #expect(chips[0].accessibilityHelp() == chips[0].toolTip)
+        let expected = ["You, Bob and 3 others reacted with :+1:", "Bob and Carol reacted with :tada:",
+                        "Bob and 1 other reacted with :heart:"]
+        #expect(chips.map { $0.accessibilityHelp() ?? "" } == expected)
+        #expect(chips.allSatisfy { $0.toolTip == nil }, "подсказку реакторов рисует ReactionHoverPanel, без системной задержки")
+    }
+
+    /// Панель реакторов: мгновенно у чипа под курсором, как в веб-клиенте.
+    @Test func hoveringAChipShowsTheReactorPanelInstantly() throws {
+        let reactions = [ReactionGroup(emojiName: "+1", count: 5, includesCurrentUser: true, reactorNames: ["You", "Bob"]),
+                         ReactionGroup(emojiName: "heart", count: 1, includesCurrentUser: false, reactorNames: ["Carol"])]
+        let f = makeTimeline([presentation(post(1), reactions: reactions)])
+        defer { f.close() }
+        let cellView = try cell(f)
+        let chips = cellView.subviews.compactMap { $0 as? ReactionChipView }.filter { !$0.isHidden }
+        let panel = f.controller.reactionPanel
+        #expect(panel.isHidden)
+
+        // Наведение на середину строки (не на чип) панель не показывает.
+        try hover(f, row: 0)
+        #expect(panel.isHidden)
+
+        // Хит-тест ячейки: чип — своя реакция, мимо чипов — ничего.
+        let heart = try #require(chips.first { $0.frame.width > 0 && cellView.reactionChip(
+            at: NSPoint(x: $0.frame.midX, y: $0.frame.midY))?.group.emojiName == "heart" })
+
+        // Курсор над чипом 👍 (своя реакция) — панель с именами и подсказкой «убрать».
+        try hover(f, at: cellView.convert(NSPoint(x: chips[0].frame.midX, y: chips[0].frame.midY), to: nil))
+        #expect(!panel.isHidden)
+        #expect(panel.itemID != nil)
+        let plusOneText = try #require(panel.accessibilityLabel())
+        #expect(plusOneText.contains("Bob"))
+        #expect(plusOneText.contains(TimelineStrings.reactionRemoveHint))
+        #expect(!plusOneText.contains(":+1:"), "колонки :+1: заменены на глиф эмодзи")
+
+        // Панель визуально под чипом и не вылезает за видимую область.
+        let clip = f.controller.view.convert(f.controller.scrollView.contentView.bounds,
+                                             from: f.controller.scrollView.contentView)
+        #expect(clip.contains(panel.frame))
+        let chipInContainer = f.controller.view.convert(chips[0].frame, from: cellView)
+        #expect(panel.frame.maxY <= chipInContainer.minY)
+
+        // Чужая реакция — подсказка «добавить».
+        try hover(f, at: cellView.convert(NSPoint(x: heart.frame.midX, y: heart.frame.midY), to: nil))
+        #expect(!panel.isHidden)
+        let heartText = try #require(panel.accessibilityLabel())
+        #expect(heartText.contains("Carol"))
+        #expect(heartText.contains(TimelineStrings.reactionAddHint))
+
+        // Сама панель держит наведение: курсор над ней — не мигает и не прячется.
+        try hover(f, at: NSPoint(x: panel.frame.midX, y: panel.frame.midY))
+        #expect(!panel.isHidden)
+
+        // Уход курсора со строки прячет панель.
+        f.controller.hoverMouseExited()
+        #expect(panel.isHidden)
+        #expect(panel.itemID == nil)
+    }
+
+    /// Геометрия панели: под чипом, иначе — над ним; всегда в границах клипа.
+    @Test func reactionPanelFrameKeepsThePanelInsideTheClip() {
+        let clip = CGRect(x: 0, y: 0, width: 640, height: 480)
+        let size = CGSize(width: 200, height: 40)
+        // Перевёрнутые координаты: панель сразу под чипом, по левому краю чипа.
+        let chip = CGRect(x: 100, y: 100, width: 40, height: 20)
+        var frame = TimelineViewController.reactionPanelFrame(chip: chip, panelSize: size, clip: clip, flipped: true)
+        #expect(frame.minY == chip.maxY + 4)
+        #expect(frame.minX == chip.minX)
+        // Снизу не влезает — панель над чипом.
+        let chipLow = CGRect(x: 100, y: 470, width: 40, height: 20)
+        frame = TimelineViewController.reactionPanelFrame(chip: chipLow, panelSize: size, clip: clip, flipped: true)
+        #expect(frame.maxY <= chipLow.minY)
+        #expect(clip.contains(frame), "клип слишком мал снизу — панель всё равно внутри")
+        // Обычные координаты (y вверх): «под чипом» = меньший y.
+        frame = TimelineViewController.reactionPanelFrame(chip: chip, panelSize: size, clip: clip, flipped: false)
+        #expect(frame.maxY == chip.minY - 4)
+        #expect(frame.minX == chip.minX)
+        // Сверху не влезает — панель под чипом.
+        let chipHigh = CGRect(x: 100, y: 10, width: 40, height: 20)
+        frame = TimelineViewController.reactionPanelFrame(chip: chipHigh, panelSize: size, clip: clip, flipped: false)
+        #expect(frame.minY >= chipHigh.maxY)
+        #expect(clip.contains(frame))
+        // У правого края ширина не выходит за клип.
+        let chipEdge = CGRect(x: 630, y: 100, width: 40, height: 20)
+        frame = TimelineViewController.reactionPanelFrame(chip: chipEdge, panelSize: size, clip: clip, flipped: true)
+        #expect(frame.maxX <= clip.maxX)
     }
 
     @Test func websitePreviewCardRendersBelowTheTextAndOpensTheLink() throws {

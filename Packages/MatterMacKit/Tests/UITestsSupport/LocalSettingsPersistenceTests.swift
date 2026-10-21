@@ -45,7 +45,9 @@ struct LocalSettingsPersistenceTests {
             #expect(settings.playSound && settings.bounceDockIcon)
             #expect(settings.soundName == SystemSounds.defaultName)
             #expect(settings.sendBehavior == .returnSends && settings.textSize == .standard && settings.appearance == .system)
-            #expect(settings.checksForUpdates && settings.updateChannel == nil)
+            #expect(settings.language == .system)
+            // MatterDock: самообновления выключены по умолчанию (форк распространяется пересборкой).
+            #expect(!settings.checksForUpdates && settings.updateChannel == nil)
             #expect(settings.theme == .system)
         }
         // Loading defaults writes nothing.
@@ -65,19 +67,24 @@ struct LocalSettingsPersistenceTests {
         first.sendBehavior = .commandReturnSends
         first.textSize = .extraLarge
         first.appearance = .dark
+        first.language = .russian
         first.checksForUpdates = false
         first.updateChannel = .nightly
         first.theme = .preset(.dusk)
         #expect(storage.values["MatterMac.notificationsEnabled"] as? Bool == false)
         #expect(storage.values["MatterMac.textSize"] as? String == "extraLarge")
-        #expect(Set(storage.values.keys) == Set(LocalSettings.Key.allCases.map(\.rawValue)))
+        // Выбор языка дублируется в `AppleLanguages` (пересматривается системой на старте).
+        #expect(storage.values["MatterMac.language"] as? String == "russian")
+        #expect((storage.values["AppleLanguages"] as? [String]) == ["ru"])
+        // MatterDock: `AppleLanguages` пишется только при сохранении настроек.
+        #expect(Set(storage.values.keys) == Set(LocalSettings.Key.allCases.map(\.rawValue) + ["AppleLanguages"]))
 
         NSApplication.shared.appearance = nil
         let restored = environment(storage).settings
         #expect(!restored.notificationsEnabled && !restored.showMessagePreview)
         #expect(!restored.playSound && !restored.bounceDockIcon && restored.soundName == sound)
         #expect(restored.sendBehavior == .commandReturnSends && restored.textSize == .extraLarge)
-        #expect(restored.appearance == .dark)
+        #expect(restored.appearance == .dark && restored.language == .russian)
         #expect(!restored.checksForUpdates && restored.updateChannel == .nightly)
         #expect(restored.theme == .preset(.dusk))
         // The saved appearance is applied at launch, not only on change.
@@ -107,8 +114,10 @@ struct LocalSettingsPersistenceTests {
         // Only real booleans count; a valid value next to invalid ones is kept.
         let mixed = LocalSettings(storage: MemorySettingsStorage([
             "MatterMac.notificationsEnabled": false, "MatterMac.textSize": "small", "MatterMac.playSound": "false",
+            "MatterMac.language": "klingon",
         ]))
         #expect(!mixed.notificationsEnabled && mixed.textSize == .small && mixed.playSound)
+        #expect(mixed.language == .system)
     }
 
     @Test func withoutStorageSettingsStayInMemory() {

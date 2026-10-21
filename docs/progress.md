@@ -2172,3 +2172,222 @@ currently displays forwarded posts as their comment/link).
 
 **Next:** confirm the scroll behavior and scroller placement by hand with trackpad
 momentum and a wheel mouse.
+
+## 2026-10-21 — MatterDock fork session (identity, updates removal, always-collapsed threads)
+
+- Forked identity applied earlier this session (bundle id `com.matterdock.app`,
+  Keychain services, PRODUCT_NAME MatterDock), update UI removed, CalVer `0.1.0`,
+  app icon redrawn, README rewritten (see FORK.md). Full `swift test` then passed
+  (481 tests), Debug `xcodebuild` succeeded.
+- Threads now always collapsed (decision 0037): `ServerSession.collapsedThreadsActive`
+  returns `true` unconditionally, the Settings toggle and `setCollapsedThreads` were
+  removed, the thread pane title carries the channel name (`Thread · <channel>`).
+  `ThreadsTests` and `NotificationPreferencesTests` were rewritten for the constant
+  mode (availability no longer depends on server config/preference; replies never
+  enter the channel window — the realtime path bumps the root's reply count).
+- Verification: `swift build --package-path Packages/MatterMacKit` clean; full
+  `swift test` run after the thread-pane title change.
+
+**Next:** watch the full test verdict, rebuild the app, reinstall and click through
+the thread panel against the corporate server.
+
+## 2026-10-21 — MatterDock fork session (zstd raw bypass, Russian localization)
+
+- Avatars/thumbnails/downloads were broken on Time Messenger because it zstd-compresses
+  binary bodies whenever `Accept-Encoding` is present at all (any value; verified live
+  with curl, URLSession and an echo probe — header-level bypass is impossible since
+  URLSession cannot omit the header). Range bypass (0039 first draft) was reverted;
+  decision 0039 rewritten: `RawZstdBypass` — raw HTTP/1.1 over `NWConnection` sends no
+  `Accept-Encoding`, so the server answers uncompressed. `MattermostHTTPClient` retries
+  through it on `Content-Encoding: zstd` in `imageData` (rewinds into a fresh
+  `HTTPResponse`) and `download` (discards staging, re-stages, streams with the same
+  progress cursor). Covered by `RawZstdBypassTests` (7 cases: wire format incl. absent
+  Accept-Encoding and Host port, head parsing incl. chunked/malformed rejection, loopback
+  fetch + server-side header assertion, body limit both in head remainder and stream,
+  file transfer). Full package run: 512 tests, 511 green, `closedPaletteLetsClicks…`
+  (QuickSwitcher UI) failed once under parallel load and passes in isolation (1.6 s,
+  exit 0) — pre-existing timing flake, unrelated.
+- Russian localization (decision 0040): keys extracted from `String(localized:)` and
+  SwiftUI `LocalizedStringKey` call sites by `scripts/extract_localizable_keys.py`;
+  interpolated keys rendered to `%lld`/`%@`/`%%` placeholders and every one of the 115
+  verified end-to-end against the compiler via a marker-bundle probe package
+  (`scripts/verify_localizable_keys.py`); two mangled interpolations (closure inside
+  `.formatted`, nested string literal) and 15 mistyped placeholders fixed via a
+  source-audited override table. 662 unique keys translated into
+  `Apps/MatterMac/Resources/Localizable.xcstrings` (two background translation passes
+  plus manual reconciliation), 54 `%lld` keys get CLDR plural variations
+  (one/few/many/other, `scripts/ru_plural_forms.py`); «MatterMac» rendered as
+  «MatterDock» in ru values, «Mattermost» (the server) kept. `ru` added to knownRegions.
+  The built bundle carries `ru.lproj/Localizable.strings` (611) + `Localizable.stringsdict`
+  (54) — spot-checked after build.
+- Language switcher: `LocalSettings.AppLanguage` (system/english/russian) persisted under
+  `MatterMac.language` (decision 0032 style), duplicates the choice into `AppleLanguages`
+  in the same storage; Settings ▸ General shows the picker first, with an honest note that
+  the new language applies after restart. `LocalSettingsPersistenceTests` extended and green.
+- Verified: `swift build` clean; full `swift test` after the settings change (exit 0,
+  512 tests green across all five test targets, the QuickSwitcher flake included);
+  Debug `xcodebuild` succeeded; app reinstalled into /Applications (identifier
+  `com.matterdock.app`, ad-hoc «MatterDock Dev», stable — saved sign-ins survive).
+- Known tails: 22 en literals still say «MatterMac» (renaming them touches UI tests that
+  assert the onboarding header and snapshot titles — ru values already say «MatterDock»);
+  `InfoGroup(title: "Settings")` and the shortcuts table pass plain Strings and stay
+  untranslated; QuickSwitcher palette flake under parallel test load.
+
+**Next:** relaunch the app, confirm avatars render on корпоративный сервер, switch the
+language to Русский, restart and click through the RU UI; commit only on request.
+
+
+## 2026-10-21 — markdown block decorations never drew (code/quote/rule/attachment)
+
+- Reported by the first live user: fenced code in a real DM rendered as bare monospace —
+  no rounded box, and by the same construction no quote bar, thematic rule or attachment
+  box. Root cause is not the parser or the renderer output: the attributed string carries
+  the `TimelineTextBlock` (3989 of 4000 collapsed characters decorated, verified by
+  attribute enumeration), and TextKit honors its padding (code line fragments start at
+  x=8). The defect is `NSTextBlock` semantics: the content-width dimension defaults to
+  0, so `NSLayoutManager.layoutRect(for:at:)` reports width 0 and `boundsRect(for:at:)`
+  returns (0,0,0,0) — `drawBackground(withFrame:)` is then handed an empty rect and
+  paints nothing. Table cells were unaffected because `renderTable` sets
+  `setValue(…, type: .percentageValueType, for: .width)`; the four decorated blocks
+  never set a width.
+- Fix in `TimelineTextBlock`: override `rectForLayout(at:in:textContainer:characterRange:)`
+  to stretch the content rect across the offered width minus the block's own right-side
+  padding/border/margin, so the drawing bounds end exactly at the container's right edge
+  (measured pre-fix layout width 0 / bounds 0; post-fix content 404–408 of 420,
+  bounds x=0 width=420 in the 420pt container). Nesting is preserved because the outer
+  block narrows the offered rect.
+- Regression test `decoratedBlocksSpanTheFullContainerWidth` in `RenderingTests` asserts
+  the drawing bounds of quote and code blocks equal the container width; verified to fail
+  without the override (bounds 0.0) and pass with it.
+- Verified: `swift test` full run — 513 tests, exit 0 (one APITests run failed once under
+  parallel load, three isolated reruns green — same pre-existing timing-flake class as
+  QuickSwitcher, no UI code involved in APITests). Debug `xcodebuild` BUILD SUCCEEDED;
+  app reinstalled into /Applications (`com.matterdock.app`, «MatterDock Dev»).
+
+**Next:** user relaunches MatterDock and confirms code blocks / quotes / rules / attachments
+draw their boxes on корпоративный сервер; still pending from the previous session — avatars live,
+RU interface after the language switch; commit only on request.
+
+## 2026-10-21 — avatars still missing: bypass broke on chunked + poisoned nginx variant cache
+
+- Live symptom: avatars not rendered even with the RawZstdBypass build installed. Repro chain
+  (scratch env-gated test, token from Keychain): URLSession path gets 200 with `Content-Encoding: zstd`
+  raw magic `28 b5 2f fd`; `RawZstdBypass.fetch` against корпоративный сервер threw `malformedResponse`.
+- Server reality, probed with curl over h1/h2 and raw NWConnection (all against
+  `/api/v4/users/{me}/image`): nginx of Time Messenger keys response variants **by URL ignoring
+  `Vary: Accept-Encoding`** — the cached zstd variant for the permanent `?_=0` key is served to
+  any `Accept-Encoding` including explicit `identity`, `Cache-Control: no-cache`, and no header at
+  all (`x-cache: HIT` + zstd every time). On a cache miss (unique query param) the server negotiates
+  normally: no `Accept-Encoding` → uncompressed. Over HTTP/1.1 it always answers
+  `Transfer-Encoding: chunked`. URLSession substitutes its own `Accept-Encoding` regardless of the
+  request's value (verified), so the primary path can never escape the zstd variant.
+- Fix in `RawZstdBypass` (decision 0039 revised): (1) uniques via `zcb=<hex>` query param appended in
+  `buildRequest` — guaranteed `x-cache: MISS` misses the poisoned zstd variant; (2) chunked body
+  decoding (RFC 9112 §7.1) via streaming `ChunkedBodyDecoder` + `BodyPieceReader` used by both
+  `fetch` and `transfer`, decoded bytes bounded by `ResponseLimits`; (3) `MattermostHTTPClient`
+  throws `malformedResponse` when the retry still proves zstd instead of caching garbage bytes.
+  Bug found in the first loop draft: the final consume can complete the body with an empty decoded
+  piece (last-chunk + trailers), and the loop fell through to an EOF read → spurious
+  `malformedResponse`; fixed by re-checking `decoder.isComplete` before the read.
+- Verified: `RawZstdBypassTests` 15 cases green (wire text incl. `zcb` + old checks, chunked parse,
+  decoder unit incl. byte-by-byte feeding, loopback chunked fetch/transfer, body limits).
+  Live probe vs корпоративный сервер, same poisoned `?_=0` URL: bypass now returns `status 200`,
+  `Content-Encoding` absent, `Content-Type: image/png`, 23760 bytes, magic `89 50 4e 47` (PNG).
+  Scratch test deleted after verification. Full `swift test` package run and app rebuild — see
+  session tail for results.
+
+**Next:** user relaunches MatterDock → avatars should now render from first launch; markdown boxes and
+RU switch still awaiting live feedback. Commit only on request.
+
+## 2026-10-21 — reaction chips: who reacted on hover (instant panel) + full green run
+
+- User feedback (screenshot web vs ours): hovering a reaction chip in the web client shows the
+  reactor list instantly; ours showed nothing. Root cause: chips only set the native `NSView.toolTip`,
+  which appears after the system hover delay — no instant feedback like the web's panel.
+- Fix: `ReactionHoverPanel` (one instance per timeline, like `HoverActionBar`): Liquid Glass on
+  macOS 26+, menu-material visual effect below, two lines — reactor names (colon `:name:` token
+  replaced with the real emoji glyph) and a click hint (add / remove your reaction). Shown instantly
+  where the pointer is over a chip, positioned below the chip (above it if it doesn't fit), always
+  inside the clip; the pointer hovering the panel itself keeps it stable (no flicker). Native chip
+  `toolTip` removed to avoid a second delayed tooltip over the panel; `accessibilityHelp` kept for
+  VoiceOver. New localized keys "Click to add your reaction" / "Click to remove your reaction"
+  in `Localizable.xcstrings` (ru catalog now 668 keys).
+- Wiring: `TimelineViewController+Hover.updateReactionPanel` (hit-test via
+  `MessageCellView.reactionChip(at:)` → displayed reactions aligned with `rowLayout.reactions`),
+  resets on hover exit, scroll suspend and snapshot replacement. Geometry in the pure
+  `reactionPanelFrame(chip:panelSize:clip:flipped:)` (flipped and unflipped coordinates).
+- Verified: `MessageActionsTests` — updated `reactionChipsNameWhoReacted` (accessibilityHelp instead
+  of toolTip), new `hoveringAChipShowsTheReactorPanelInstantly` (instant show, add/remove hint,
+  :token: → glyph substitution, clip containment, panel self-hover stability, hide on exit) and
+  `reactionPanelFrameKeepsThePanelInsideTheClip` (below/above/edge-clamping, both coordinate
+  systems); `ReactionPickerTests.timelineRendersGlyphsAndGivesARowAnchor` updated the same way.
+  Full package run: 217 + 29 + 18 + 183 + 76 = **523 tests green, EXIT=0** (one earlier
+  `mediaViewerCoversTheWindow…` failure did not reproduce in isolation — parallel-load timing flake,
+  pre-existing). App rebuilt (`BUILD SUCCEEDED`) and reinstalled to /Applications; old running
+  process killed so the relaunch picks up the new build.
+
+**Next:** user relaunches MatterDock and hovers a reaction chip → reactor list should appear
+instantly (RU under Settings ▸ General ▸ Язык); together with this build the avatar zstd bypass
+and markdown-box fixes are live. Commit only on request.
+
+## 2026-10-21 — GitHub hosting, DMG and first fork release v0.1.0
+
+- Hosted the fork at **github.com/ipashab/MatterDock** (private — docs carry internal
+  server references). Full upstream history + one fork commit
+  (`feat(fork): rebrand as MatterDock `, 70 files:
+  identity, CRT threads, unreads group, zstd bypass, reaction hover panel, RU catalog,
+  updater/workflows removal). `__pycache__` cleaned via gitignore+amend before push.
+- Secret scan of the working tree before push: no literal credentials (matches were
+  validator regexes); Keychain-only token storage confirmed unchanged.
+- Release build: `xcodebuild … -configuration Release` signed with the internal
+  "MatterDock Dev" certificate — `BUILD SUCCEEDED`, `codesign --verify --deep --strict`
+  OK; `spctl` rejects as expected (no notarization — stated in release notes).
+- DMG: `hdiutil create -format UDZO` with /Applications symlink, `hdiutil verify`
+  VALID, 12 MB; app ZIP rebuilt once after detecting absolute-path entries in the
+  first archive (release asset replaced).
+- GitHub release **v0.1.0** published with notes (features, install steps, honest
+  no-notarization caveat, limitations) and both assets:
+  https://github.com/ipashab/MatterDock/releases/tag/v0.1.0
+
+**Next:** variant B approved by user — bubble (Telegram-style) timeline. Architecture
+document is being prepared (bubble-architecture.md scratch, to become ADR 0041 + plan);
+implementation starts from its step 1.
+
+## Сессия: rebrand → MatterDock (2026-10-21)
+
+Решение пользователя: отвязать продукт от деплоя — полное переименование
+в **MatterDock** со сменой идентичности.
+
+- Сертификат подписи: новый стабильный «MatterDock Dev» (рецепт в FORK.md);
+  прежний сертификат подписи оставлен в ключнице. Смена designated requirement +
+  Keychain-сервисов = один повторный вход (согласовано с пользователем).
+- Идентичность: bundle id `com.matterdock.app` (+.uitests, +.UpdateInstaller),
+  Keychain/кэш `com.matterdock.app.*`, queue-лейблы `com.matterdock.*`,
+  PRODUCT_NAME/CFBundleName = MatterDock, RU-строки обновлены.
+- Версия 0.2.0 (build 2), CalVer-комментарий сохранён.
+- История: форк-коммиты слиты в один чистый форк-коммит («feat(fork): rebrand as MatterDock — independent client for any Mattermost server»), force-push;
+  тег/релиз v0.1.0 удалён.
+- GitHub: репо переименовано → github.com/ipashab/MatterDock (private).
+- Тесты: 217+29+18+183+76 прогонов, единственный провал — известный
+  timing-флейк `mediaViewer…` (в изоляции зелёный дважды).
+- Release build: BUILD SUCCEEDED, кодебазис `com.matterdock.app`, подпись
+  «MatterDock Dev», strict verify OK. DMG 12 МБ checksum VALID.
+- Релиз v0.2.0: MatterDock-0.2.0.dmg + .zip —
+  github.com/ipashab/MatterDock/releases/tag/v0.2.0
+- /Applications: прежний .app заменён на MatterDock.app.
+
+Пузыри (вариант B): архитектурный документ готов (scratch
+bubble-architecture.md), реализация не начата — следующая сессия.
+
+## Сессия: чистый репозиторий (2026-10-21)
+
+Решение пользователя: пересоздать GitHub-репозиторий с нуля, чтобы история
+не содержала следов прошлого имени и внутреннего hostname.
+
+- Скраб всех упоминаний прошлого бренда и внутреннего hostname из docs
+  (FORK.md, ADR 0039, progress.md) — рабочее дерево вычищено (0 совпадений по бренду и hostname).
+- Все 125 upstream-коммитов проверены grep'ом — упоминаний нет.
+- Форк-эра сжата в один коммит поверх upstream-истории; полный локальный
+  backup-бандл сохранён до удаления старого репо.
+- GitHub: старый репозиторий удалён, создан новый чистый ipashab/MatterDock
+  (private), main + тег v0.2.0, релиз с MatterDock-0.2.0.dmg/.zip опубликован заново.

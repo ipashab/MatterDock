@@ -39,11 +39,29 @@ public final class LocalSettings {
         public var id: String { rawValue }
     }
 
+    /// Язык интерфейса (MatterDock, decision 0040). `system` — как в macOS;
+    /// явный выбор пишется дополнительно в `AppleLanguages`, откуда
+    /// `Bundle.main` берёт локализацию на следующем запуске.
+    public enum AppLanguage: String, CaseIterable, Identifiable, Sendable {
+        case system, english, russian
+        public var id: String { rawValue }
+
+        /// Значение `AppleLanguages` для этого выбора (`nil` — системное).
+        public var appleLanguages: [String]? {
+            switch self {
+            case .system: nil
+            case .english: ["en"]
+            case .russian: ["ru"]
+            }
+        }
+    }
+
     /// Storage keys (namespaced; values are `Bool` or a known `String`).
     enum Key: String, CaseIterable {
         case sendBehavior = "MatterMac.sendBehavior"
         case textSize = "MatterMac.textSize"
         case appearance = "MatterMac.appearance"
+        case language = "MatterMac.language"
         case notificationsEnabled = "MatterMac.notificationsEnabled"
         case showMessagePreview = "MatterMac.showMessagePreview"
         case playSound = "MatterMac.playSound"
@@ -77,6 +95,16 @@ public final class LocalSettings {
             save(.appearance, appearance.rawValue)
         }
     }
+    /// Язык интерфейса; смена применяется после перезапуска приложения.
+    public var language: AppLanguage = .system {
+        didSet {
+            guard oldValue != language, isLoaded else { return }
+            save(.language, language.rawValue)
+            // `AppleLanguages` читается системой на старте; `nil` возвращает
+            // выбор системному языку.
+            storage?.set(language.appleLanguages, forKey: "AppleLanguages")
+        }
+    }
     /// The user's Notification Center choice (on by default). Delivery also needs
     /// macOS authorization; see `AppModel.notificationsEnabled`.
     public var notificationsEnabled = true {
@@ -100,7 +128,7 @@ public final class LocalSettings {
     }
 
     /// Check GitHub for new releases and download them in the background.
-    public var checksForUpdates = true {
+    public var checksForUpdates = false {
         didSet { save(.checksForUpdates, checksForUpdates) }
     }
     /// `nil`: follow the running build (nightly builds follow nightlies).
@@ -120,6 +148,7 @@ public final class LocalSettings {
             sendBehavior = read.value(.sendBehavior) ?? sendBehavior
             textSize = read.value(.textSize) ?? textSize
             appearance = read.value(.appearance) ?? appearance
+            language = read.value(.language) ?? language
             notificationsEnabled = read.bool(.notificationsEnabled) ?? notificationsEnabled
             showMessagePreview = read.bool(.showMessagePreview) ?? showMessagePreview
             playSound = read.bool(.playSound) ?? playSound

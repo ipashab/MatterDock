@@ -10,7 +10,7 @@ public actor KeychainCacheKeys: CacheKeyStore {
     /// Deleting every key is bounded even if the Keychain keeps reporting matches.
     private static let maximumDeletions = 64
 
-    public init(service: String = "org.mattermac.MatterMac.cache-keys") {
+    public init(service: String = "com.matterdock.app.cache-keys") {
         self.service = service
     }
 

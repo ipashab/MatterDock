@@ -2,7 +2,7 @@
 // (layered on top of the project-level Debug/Release.xcconfig; decision 0034).
 
 PRODUCT_NAME = MatterMacUpdateInstaller
-PRODUCT_BUNDLE_IDENTIFIER = dev.frnoch.mattermac.UpdateInstaller
+PRODUCT_BUNDLE_IDENTIFIER = com.matterdock.app.UpdateInstaller
 GENERATE_INFOPLIST_FILE = NO
 INFOPLIST_FILE = Configuration/UpdateInstaller-Info.plist
 SKIP_INSTALL = YES

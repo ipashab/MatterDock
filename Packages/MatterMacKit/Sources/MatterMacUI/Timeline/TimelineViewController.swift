@@ -68,6 +68,7 @@ public final class TimelineViewController: NSViewController {
     private(set) lazy var adapter = TimelineTableAdapter(controller: self)
     /// Floating actions for the hovered/selected message (see `+Hover`).
     let hoverBar = HoverActionBar(frame: .zero)
+    let reactionPanel = ReactionHoverPanel(frame: .zero)
     /// Pointer location (window coordinates) while it is inside the timeline.
     var hoverPointerLocation: NSPoint?
     var hoverHighlightedID: TimelineItemID?
@@ -317,6 +318,7 @@ public final class TimelineViewController: NSViewController {
         lastVisibilityReport = nil
         endFlash()
         hoverBar.reset()
+        reactionPanel.reset()
         hoverHighlightedID = nil
         hoverTimestampID = nil
         pendingHeightFixups.removeAll()
@@ -556,6 +558,7 @@ public final class TimelineViewController: NSViewController {
             lastAnchor = nil
             endFlash()
             hoverBar.reset()
+            reactionPanel.reset()
             hoverHighlightedID = nil
             hoverTimestampID = nil
             tableView.reloadData()

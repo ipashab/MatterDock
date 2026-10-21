@@ -26,7 +26,7 @@ public actor KeychainAccounts {
     private let budget: ResourceBudget
     private let allowsInsecureLoopback: Bool
 
-    public init(service: String = "org.mattermac.MatterMac.accounts", budget: ResourceBudget = .standard,
+    public init(service: String = "com.matterdock.app.accounts", budget: ResourceBudget = .standard,
                 allowsInsecureLoopback: Bool = false) {
         self.service = service; self.budget = budget; self.allowsInsecureLoopback = allowsInsecureLoopback
     }

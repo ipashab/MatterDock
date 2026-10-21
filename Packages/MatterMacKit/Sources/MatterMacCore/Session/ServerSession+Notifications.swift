@@ -217,12 +217,8 @@ extension ServerSession {
     }
 
     /// Only when the server's `CollapsedThreads` is `default_on` or `default_off`.
-    public func setCollapsedThreads(_ enabled: Bool) async throws(UserFacingError) {
-        guard capabilities.collapsedThreads == .defaultOn || capabilities.collapsedThreads == .defaultOff else {
-            throw .unsupportedCapability("collapsed_reply_threads")
-        }
-        try await saveDisplayPreference("collapsed_reply_threads", enabled ? "on" : "off")
-    }
+    // MatterDock: настройка удалена — свёрнутые треды включены всегда, preference
+    // больше не применяется.
 
     private func saveDisplayPreference(_ name: String, _ value: String) async throws(UserFacingError) {
         guard isActiveSessionAlive else { throw .authenticationRequired }

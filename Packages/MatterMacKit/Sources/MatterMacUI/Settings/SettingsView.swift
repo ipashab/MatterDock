@@ -157,6 +157,15 @@ struct GeneralSettingsTab: View {
     var body: some View {
         Form {
             Section {
+                Picker("Language", selection: Binding(get: { environment.settings.language },
+                                                      set: { environment.settings.language = $0 })) {
+                    Text("System").tag(LocalSettings.AppLanguage.system)
+                    Text("English").tag(LocalSettings.AppLanguage.english)
+                    Text("Русский").tag(LocalSettings.AppLanguage.russian)
+                }
+                .accessibilityIdentifier("languagePicker")
+                Text("The new language applies after MatterDock restarts.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Picker("Send messages with", selection: Binding(get: { environment.settings.sendBehavior },
                                                                  set: { environment.settings.sendBehavior = $0 })) {
                     Text("Return").tag(AppEnvironment.SendBehaviorSetting.returnSends)
@@ -177,7 +186,6 @@ struct GeneralSettingsTab: View {
                 ServerChangeStatus(state: change)
             } header: { ServerSectionHeader(session: environment.appModel?.activeSession) }
 
-            UpdateSettingsSection(environment: environment)
         }
         .formStyle(.grouped)
     }
@@ -210,25 +218,11 @@ struct GeneralSettingsTab: View {
         if display.isNameFormatLocked {
             Text("Your administrator set how names are shown.").font(.caption).foregroundStyle(.secondary)
         }
-        if display.canChangeCollapsedThreads {
-            Toggle("Collapsed reply threads", isOn: Binding(
-                get: { display.collapsedThreadsActive },
-                set: { value in change.run { try await session.setCollapsedThreads(value) } }))
-                .accessibilityIdentifier("collapsedThreadsToggle")
-            Text("Replies stay in their thread instead of the channel. Open conversations reload when this changes.")
-                .font(.caption).foregroundStyle(.secondary)
-        } else {
-            LabeledContent("Collapsed reply threads") {
-                Text(collapsedThreadsLabel(display.collapsedThreadsMode))
-            }
-        }
-    }
-
-    private func collapsedThreadsLabel(_ mode: CollapsedThreadsMode) -> String {
-        switch mode {
-        case .alwaysOn: String(localized: "Always on (set by the server)")
-        case .disabled: String(localized: "Not available on this server")
-        default: String(localized: "Unknown")
+        // MatterDock: свёрнутые треды включены всегда (политика форка) — ответы
+        // живут только в панели обсуждения. Тумблер и серверная настройка
+        // больше ни на что не влияют, поэтому не показываются.
+        LabeledContent("Collapsed reply threads") {
+            Text("Always on (MatterDock)")
         }
     }
 }

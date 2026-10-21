@@ -28,7 +28,7 @@ struct MainWindowView: View {
                 }
                 if let thread = session.thread {
                     if showsBothPanes { Divider() }
-                    TrailingPane(title: "Thread", systemImage: "bubble.left.and.text.bubble.right",
+                    TrailingPane(title: ChannelHeaderText.threadTitle(session.header), systemImage: "bubble.left.and.text.bubble.right",
                                  close: { session.closeThread() },
                                  accessory: { ThreadFollowButton(session: session, target: thread.target) }) {
                         ConversationView(session: session, target: thread.target, snapshot: thread)
@@ -51,7 +51,7 @@ struct MainWindowView: View {
                 // The single optional trailing panel (SPEC §4): thread or details.
                 if let thread = session.thread {
                     if showsBothPanes { Divider() }
-                    TrailingPane(title: "Thread", systemImage: "bubble.left.and.text.bubble.right",
+                    TrailingPane(title: ChannelHeaderText.threadTitle(session.header), systemImage: "bubble.left.and.text.bubble.right",
                                  close: { session.closeThread() },
                                  accessory: { ThreadFollowButton(session: session, target: thread.target) }) {
                         ConversationView(session: session, target: thread.target, snapshot: thread)
@@ -113,9 +113,6 @@ struct MainWindowView: View {
 
     @ViewBuilder private var banners: some View {
         VStack(spacing: 8) {
-            if let updater = app.environment.updater {
-                UpdateBanner(updater: updater)
-            }
             if let notice = session.noticeText {
                 VStack(alignment: .leading, spacing: 8) {
                     FloatingBanner(tone: session.requiresAuthentication ? .error : .warning,

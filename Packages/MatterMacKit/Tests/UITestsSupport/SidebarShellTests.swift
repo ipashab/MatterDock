@@ -31,10 +31,10 @@ struct SidebarShellTests {
                 var channel = CoreFixtures.channel(n)
                 channel.displayName = ["Town Square", "Design reviews with a very long channel name for truncation",
                                        "Release", "Random", "Support", "Ops"][n - 1]
-                if n == 3 { channel.totalMessageCount = 4 }
+                if n == 3 { channel.totalMessageCount = 4; channel.totalMessageCountRoot = 4 }
                 state.channels[channel.id] = channel
                 var member = ChannelMembership(channelID: channel.id, userID: me)
-                if n == 5 { member.mentionCount = 3; member.markUnread = .mention }
+                if n == 5 { member.mentionCount = 3; member.mentionCountRoot = 3; member.markUnread = .mention }
                 state.memberships[channel.id] = member
             }
             let dm = Channel(id: ChannelID(unchecked: CoreFixtures.id("dm", 1)), teamID: nil, type: .direct,
@@ -57,7 +57,8 @@ struct SidebarShellTests {
                 SidebarCategory(id: id("direct_messages"), userID: me, teamID: team, kind: .directMessages,
                                 displayName: "Direct Messages", sorting: .recent),
             ]
-            directory.teamUnreads = [TeamUnread(teamID: Self.otherTeam.id, messageCount: 2, mentionCount: 1)]
+            directory.teamUnreads = [TeamUnread(teamID: Self.otherTeam.id, messageCount: 2, mentionCount: 1,
+                                                messageCountRoot: 2, mentionCountRoot: 1)]
             directory.publicChannels[team] = [CoreFixtures.channel(1), CoreFixtures.channel(30)]
         }
         let app = AppModel(environment: AppEnvironment(serviceFactory: Factory(fake: service),
@@ -66,6 +67,11 @@ struct SidebarShellTests {
             login: LoginResult(credential: BearerCredential(token: "fixture-token", kind: .session)!, user: CoreFixtures.me),
             capabilities: ServerCapabilities())
         let model = SessionViewModel(slot: slot, app: app)
+        // Политика форка: группировка непрочитанных включена по умолчанию;
+        // этот прогон сначала проверяет обычные секции, затем саму группировку.
+        // Прямой await: обёртка модели — fire-and-forget таск, он применится
+        // позже первого снапшота сайдбара.
+        await slot.session.setGroupsUnreads(false)
         await slot.session.start()
         let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: width, height: 640),
                               styleMask: [.titled, .resizable], backing: .buffered, defer: false)

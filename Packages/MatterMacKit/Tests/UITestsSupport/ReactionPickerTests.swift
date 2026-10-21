@@ -144,8 +144,11 @@ struct ReactionPickerTests {
         #expect(cell.displayedBodyText == "Done 🎉 :party_parrot:")
         let chips = cell.subviews.compactMap { $0 as? ReactionChipView }.filter { !$0.isHidden }
         #expect(chips.map(\.emoji) == ["👍", ":party_parrot:"])
-        #expect(chips.first?.toolTip == "You and 1 other reacted with :+1:")
-        #expect(chips.last?.toolTip == "1 person reacted with :party_parrot:")
+        // Подсказку реакторов рисует ReactionHoverPanel; чипы остаются доступны
+        // VoiceOver через accessibilityHelp.
+        #expect(chips.map { $0.accessibilityHelp() ?? "" }
+            == ["You and 1 other reacted with :+1:", "1 person reacted with :party_parrot:"])
+        #expect(chips.allSatisfy { $0.toolTip == nil })
         #expect(chips.first?.accessibilityLabel()?.contains("+1") == true)
         #expect(c.anchorRect(for: post.id) != nil)
         #expect(c.anchorRect(for: CoreFixtures.post(9, channel: post.channelID).id) == nil)

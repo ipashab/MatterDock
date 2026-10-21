@@ -94,7 +94,7 @@ struct MainWindowCommands: Commands {
 
     var body: some Commands {
         CommandGroup(before: .windowList) {
-            Button("MatterMac") { openWindow(id: MainWindowScene.id) }
+            Button("MatterDock") { openWindow(id: MainWindowScene.id) }
                 .keyboardShortcut("0", modifiers: .command)
         }
     }

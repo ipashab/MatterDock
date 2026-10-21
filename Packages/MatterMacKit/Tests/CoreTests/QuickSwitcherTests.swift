@@ -73,7 +73,7 @@ struct QuickSwitcherTests {
             state.users[Self.zoe.id] = Self.zoe
             let annaDM = Channel(id: ChannelID(unchecked: CoreFixtures.id("dm", 1)), teamID: nil, type: .direct,
                                  name: [me.rawValue, Self.anna.id.rawValue].sorted().joined(separator: "__"),
-                                 displayName: "", totalMessageCount: 4)
+                                 displayName: "", totalMessageCount: 4, totalMessageCountRoot: 4)
             let benDM = Channel(id: ChannelID(unchecked: CoreFixtures.id("dm", 2)), teamID: nil, type: .direct,
                                 name: [me.rawValue, Self.ben.id.rawValue].sorted().joined(separator: "__"), displayName: "")
             var archived = CoreFixtures.channel(4)
@@ -97,7 +97,7 @@ struct QuickSwitcherTests {
             state.memberships[release.id] = ChannelMembership(channelID: release.id, userID: me,
                                                                lastViewedAt: MattermostTimestamp(milliseconds: 500))
             state.memberships[mentions.id] = ChannelMembership(channelID: mentions.id, userID: me,
-                                                                mentionCount: 2)
+                                                                mentionCount: 2, mentionCountRoot: 2)
             state.memberships[Self.group.id] = ChannelMembership(channelID: Self.group.id, userID: me,
                                                                   lastViewedAt: MattermostTimestamp(milliseconds: 700))
             state.statuses[Self.anna.id] = .away

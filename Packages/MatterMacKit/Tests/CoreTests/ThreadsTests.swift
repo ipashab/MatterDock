@@ -14,13 +14,15 @@ struct ThreadsTests {
                           participants: [CoreFixtures.bob, CoreFixtures.me])
     }
 
-    @Test func unavailableWithoutCollapsedThreads() async {
+    @Test func availableEvenWhenServerConfiguresInlineThreads() async throws {
+        // Политика форка: свёрнутые треды доступны всегда, даже если сервер
+        // сконфигурирован на инлайн-ответы (`CollapsedThreads: disabled`).
         let h = await SessionHarness()
         _ = await eventually { await h.session.directory.channels[h.channel.id] != nil }
-        await #expect(throws: UserFacingError.self) { try await h.session.followedThreads(unreadOnly: false, before: nil) }
+        _ = try await h.session.followedThreads(unreadOnly: false, before: nil)
         var activity = h.session.threadActivity.makeAsyncIterator()
         let first = await activity.next()
-        #expect(first?.isAvailable == false)
+        #expect(first?.isAvailable == true)
     }
 
     @Test func pagesSummariesAndTotalsWithoutLooping() async throws {
@@ -111,19 +113,19 @@ struct ThreadsTests {
         _ = await h.session.shutdown(revokeServerSession: false)
     }
 
-    @Test func changingCollapsedThreadPreferencePublishesAvailability() async throws {
+    @Test func threadAvailabilityIgnoresServerPreference() async throws {
+        // Политика форка: доступность тредов не зависит от preference на сервере.
         let h = await SessionHarness(collapsedThreads: "default_off")
         #expect(await eventually { await !h.session.isRunning(.threadTotals) })
-        try await h.session.setCollapsedThreads(true)
-        #expect(await eventually { await !h.session.isRunning(.threadTotals) })
+        #expect(await h.session.threadsAvailable)
         var activity = h.session.threadActivity.makeAsyncIterator()
-        let enabled = await activity.next()
-        #expect(enabled?.isAvailable == true)
-        try await h.session.setCollapsedThreads(false)
-        #expect(await eventually { await !h.session.isRunning(.threadTotals) })
-        let disabled = await activity.next()
-        #expect(disabled?.isAvailable == false)
-        #expect(disabled?.unreadThreads == 0)
+        let first = await activity.next()
+        #expect(first?.isAvailable == true)
+        // Чужой клиент выключает preference — поведение не меняется.
+        await h.realtime.push(.preferencesChanged([Preference(category: "display_settings", name: "collapsed_reply_threads",
+                                                              value: "off")]))
+        _ = await eventually { await h.session.directory.collapsedThreadsPreference == false }
+        #expect(await h.session.threadsAvailable)
         _ = await h.session.shutdown(revokeServerSession: false)
     }
 

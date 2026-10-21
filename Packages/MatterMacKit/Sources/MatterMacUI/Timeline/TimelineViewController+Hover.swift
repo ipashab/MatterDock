@@ -14,6 +14,7 @@ extension TimelineViewController {
         hoverBar.onAction = { [weak self] action in self?.performPrepared(action) }
         hoverBar.onMore = { [weak self] button in self?.presentMoreMenu(from: button) }
         container.addSubview(hoverBar)
+        container.addSubview(reactionPanel)
     }
 
     // MARK: - Events
@@ -86,6 +87,11 @@ extension TimelineViewController {
             if !hoverBar.isHidden, hoverBar.frame.contains(local), let id = hoverBar.itemID, let row = rowIndex[id] {
                 return (row, true)
             }
+            // Наведённая панель реакторов сохраняет свою строку (она лежит над строкой).
+            if !reactionPanel.isHidden, reactionPanel.frame.contains(local), let id = reactionPanel.itemID,
+               let row = rowIndex[id] {
+                return (row, true)
+            }
             let clip = scrollView.contentView
             if clip.bounds.contains(clip.convert(location, from: nil)), !isPointerOccluded(at: location) {
                 let row = tableView.row(at: tableView.convert(location, from: nil))
@@ -113,6 +119,7 @@ extension TimelineViewController {
             setHoverHighlight(nil)
             setHoverTimestamp(nil)
             hoverBar.reset()
+            reactionPanel.reset()
             return
         }
         let target = hoverTargetRow()
@@ -124,9 +131,11 @@ extension TimelineViewController {
                                  emojiText: { [renderer] in renderer.emojiText(for: $0) })
         else {
             hoverBar.reset()
+            reactionPanel.reset()
             return
         }
         positionHoverBar(row: target.row)
+        updateReactionPanel(row: target.row, isPointer: target.isPointer)
     }
 
     func positionHoverBar(row: Int) {
@@ -175,6 +184,53 @@ extension TimelineViewController {
         if let id, let row = rowIndex[id] {
             (tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? MessageCellView)?.setHovered(true)
         }
+    }
+
+    // MARK: - Панель реакторов
+
+    /// Панель «кто отреагировал» у чипа под курсором — мгновенно, как в
+    /// веб-клиенте (нативный toolTip появляется только с системной задержкой).
+    func updateReactionPanel(row: Int, isPointer: Bool) {
+        guard isPointer, let location = hoverPointerLocation else {
+            reactionPanel.reset()
+            return
+        }
+        let local = view.convert(location, from: nil)
+        if !reactionPanel.isHidden, reactionPanel.frame.contains(local) { return }
+        guard let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? MessageCellView,
+              let hit = cell.reactionChip(at: cell.convert(location, from: nil)) else {
+            reactionPanel.reset()
+            return
+        }
+        reactionPanel.configure(item: items[row].id, emojiName: hit.group.emojiName,
+                                names: TimelineStrings.reactorPanelNames(hit.group, emoji: { [renderer] in
+                                    renderer.emojiText(for: $0)
+                                }),
+                                hint: hit.group.includesCurrentUser ? TimelineStrings.reactionRemoveHint
+                                                                    : TimelineStrings.reactionAddHint)
+        positionReactionPanel(cell: cell, chipInCell: hit.frame)
+    }
+
+    func positionReactionPanel(cell: MessageCellView, chipInCell: CGRect) {
+        let clip = view.convert(scrollView.contentView.bounds, from: scrollView.contentView)
+        let chip = view.convert(chipInCell, from: cell)
+        let frame = Self.reactionPanelFrame(chip: chip, panelSize: reactionPanel.preferredSize, clip: clip,
+                                            flipped: view.isFlipped)
+        if reactionPanel.frame != frame { reactionPanel.frame = frame }
+        reactionPanel.isHidden = false
+    }
+
+    /// Позиция панели под чипом; не влезает снизу — над чипом; всегда внутри
+    /// видимой области (координаты контейнера, flipped или нет).
+    static func reactionPanelFrame(chip: CGRect, panelSize: CGSize, clip: CGRect, flipped: Bool) -> CGRect {
+        let gap: CGFloat = 4
+        let x = min(max(chip.minX, clip.minX + 4), max(clip.minX + 4, clip.maxX - panelSize.width - 4))
+        let below = flipped ? chip.maxY + gap : chip.minY - panelSize.height - gap
+        let above = flipped ? chip.minY - panelSize.height - gap : chip.maxY + gap
+        let fitsBelow = below >= clip.minY + 2 && below + panelSize.height <= clip.maxY - 2
+        var y = fitsBelow ? below : above
+        y = min(max(y, clip.minY + 2), max(clip.minY + 2, clip.maxY - panelSize.height - 2))
+        return NSRect(x: x.rounded(), y: y.rounded(), width: panelSize.width, height: panelSize.height)
     }
 
     // MARK: - Menus

@@ -25,11 +25,6 @@ extension SessionViewModel {
         try await session.setNameFormat(format)
     }
 
-    public func setCollapsedThreads(_ enabled: Bool) async throws(UserFacingError) {
-        guard canChangeServerSettings else { throw .authenticationRequired }
-        try await session.setCollapsedThreads(enabled)
-    }
-
     public func updateAccountNotifications(_ change: @escaping @Sendable (inout UserNotifyProps) -> Void)
         async throws(UserFacingError) {
         guard canChangeServerSettings else { throw .authenticationRequired }

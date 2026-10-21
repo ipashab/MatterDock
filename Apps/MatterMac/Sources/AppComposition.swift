@@ -34,7 +34,7 @@ enum AppComposition {
             budget: budget,
             allowsInsecureLoopback: development,
             accounts: uiTesting ? nil : KeychainAccounts(
-                service: development ? "org.mattermac.MatterMac.development-accounts" : "org.mattermac.MatterMac.accounts",
+                service: development ? "com.matterdock.app.development-accounts" : "com.matterdock.app.accounts",
                 budget: budget, allowsInsecureLoopback: development),
             cacheStorage: uiTesting ? nil : cacheStorage(development: development),
             // "On This Mac" settings (decision 0032), saved under `MatterMac.*` keys.
@@ -73,7 +73,7 @@ enum AppComposition {
         #endif
         let configuration = AppUpdater.Configuration(
             installedApp: Bundle.main.bundleURL, currentBuild: build, currentLabel: label,
-            workDirectory: caches.appendingPathComponent("org.mattermac.MatterMac/Updates", isDirectory: true),
+            workDirectory: caches.appendingPathComponent("com.matterdock.app/Updates", isDirectory: true),
             requirement: requirement, relaunchArguments: Array(arguments.dropFirst()), overrideReleasesURL: feed,
             firstCheckDelay: feed == nil ? .seconds(20) : .seconds(1),
             installsWhenReady: debugFlag(updateAutoInstallArgument, arguments: arguments))
@@ -86,10 +86,10 @@ enum AppComposition {
     /// directory and keys, like their saved sign-ins.
     static func cacheStorage(development: Bool) -> ContentCache.Storage? {
         guard let caches = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
-        let directory = caches.appendingPathComponent("org.mattermac.MatterMac", isDirectory: true)
+        let directory = caches.appendingPathComponent("com.matterdock.app", isDirectory: true)
             .appendingPathComponent(development ? "Content-development" : "Content", isDirectory: true)
-        let keys = KeychainCacheKeys(service: development ? "org.mattermac.MatterMac.development-cache-keys"
-                                                          : "org.mattermac.MatterMac.cache-keys")
+        let keys = KeychainCacheKeys(service: development ? "com.matterdock.app.development-cache-keys"
+                                                          : "com.matterdock.app.cache-keys")
         return ContentCache.Storage(directory: directory, keys: keys)
     }
 

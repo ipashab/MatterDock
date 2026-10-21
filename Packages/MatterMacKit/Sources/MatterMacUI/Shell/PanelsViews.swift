@@ -10,6 +10,12 @@ enum ChannelHeaderText {
         header?.displayName ?? ""
     }
 
+    /// Заголовок панели обсуждения — как в официальном клиенте, с именем канала.
+    static func threadTitle(_ header: ChannelHeaderPresentation?) -> LocalizedStringKey {
+        let name = title(header)
+        return name.isEmpty ? "Thread" : "Thread · \(name)"
+    }
+
     /// `parse` renders the header's Markdown to plain text (`[staging](https://…)`
     /// shows as "staging"); without it the source line is shown.
     static func subtitle(_ header: ChannelHeaderPresentation?,
@@ -76,7 +82,7 @@ struct CompatibilityView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 14) {
-                Text("MatterMac").font(.title.weight(.semibold))
+                Text("MatterDock").font(.title.weight(.semibold))
                 Text("Version \(Self.versionLabel) (\(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "—"))")
                     .foregroundStyle(.secondary)
                 Text("An independent, open-source, Mattermost-compatible client. Not affiliated with or endorsed by Mattermost, Inc.")

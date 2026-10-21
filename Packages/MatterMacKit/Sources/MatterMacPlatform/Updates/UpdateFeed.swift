@@ -97,7 +97,7 @@ public struct GitHubUpdateFeed: Sendable {
     /// Development only: a base URL serving `releases.json` in GitHub's format.
     public var overrideReleasesURL: URL?
 
-    public init(repository: String = "dfrnoch/MatterMac", http: any UpdateHTTP, overrideReleasesURL: URL? = nil) {
+    public init(repository: String = "ipashab/MatterDock", http: any UpdateHTTP, overrideReleasesURL: URL? = nil) {
         self.repository = repository
         self.http = http
         self.overrideReleasesURL = overrideReleasesURL

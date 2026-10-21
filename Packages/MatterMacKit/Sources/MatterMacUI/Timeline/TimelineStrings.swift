@@ -48,8 +48,7 @@ enum TimelineStrings {
     static func quickReaction(_ name: String) -> String { String(localized: "React with :\(name):") }
 
     /// "alice, bob and 3 others reacted with :+1:" (at most the names the builder resolved).
-    static func reactors(_ reaction: ReactionGroup) -> String {
-        let emoji = ":" + reaction.emojiName + ":"
+    static func reactors(_ reaction: ReactionGroup) -> String {        let emoji = ":" + reaction.emojiName + ":"
         var names = reaction.reactorNames
         if names.isEmpty, reaction.includesCurrentUser { names = [String(localized: "You")] }
         guard !names.isEmpty else {
@@ -66,6 +65,18 @@ enum TimelineStrings {
         return others == 1 ? String(localized: "\(head) and 1 other reacted with \(emoji)")
                            : String(localized: "\(head) and \(others) others reacted with \(emoji)")
     }
+
+    /// Кто отреагировал для hover-панели: `:имя:` из `reactors` заменяется
+    /// реальным глифом, когда он есть (кастомные эмодзи остаются `:имя:`).
+    static func reactorPanelNames(_ reaction: ReactionGroup, emoji: (String) -> String) -> String {
+        let token = ":\(reaction.emojiName):"
+        let glyph = emoji(reaction.emojiName)
+        guard glyph != token else { return reactors(reaction) }
+        return reactors(reaction).replacingOccurrences(of: token, with: glyph)
+    }
+
+    static let reactionAddHint = String(localized: "Click to add your reaction")
+    static let reactionRemoveHint = String(localized: "Click to remove your reaction")
 
     static func linkPreviewAccessibility(_ preview: LinkPreview) -> String {
         let site = preview.siteName.isEmpty ? preview.host : preview.siteName

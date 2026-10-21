@@ -12,7 +12,7 @@ import TestSupport
 @Suite("Keychain sign-in lifecycle", .enabled(if: ProcessInfo.processInfo.environment["MM_KEYCHAIN_TESTS"] == "1"))
 struct KeychainSignInTests {
     private func store() -> KeychainAccounts {
-        KeychainAccounts(service: "org.mattermac.tests." + UUID().uuidString)
+        KeychainAccounts(service: "com.matterdock.tests." + UUID().uuidString)
     }
 
     private func app(_ accounts: KeychainAccounts, mode: OSAllocatedUnfairLock<String>, calls: OSAllocatedUnfairLock<[String]>) -> AppModel {
@@ -84,7 +84,7 @@ struct KeychainSignInTests {
     }
 
     @Test func boundedAccountsUpdateAndScopedRemoval() async throws {
-        let service = "org.mattermac.tests." + UUID().uuidString
+        let service = "com.matterdock.tests." + UUID().uuidString
         var budget = ResourceBudget.standard
         budget.connectedSessions = 2
         let accounts = KeychainAccounts(service: service, budget: budget)
@@ -112,8 +112,8 @@ struct KeychainSignInTests {
     func processRestart() async throws {
         let env = ProcessInfo.processInfo.environment
         let service = try #require(env["MM_KEYCHAIN_TEST_SERVICE"])
-        #expect(service.hasPrefix("org.mattermac.tests."))
-        guard service.hasPrefix("org.mattermac.tests.") else { return }
+        #expect(service.hasPrefix("com.matterdock.tests."))
+        guard service.hasPrefix("com.matterdock.tests.") else { return }
         let accounts = KeychainAccounts(service: service)
         let record = KeychainAccounts.Account(endpoint: CoreFixtures.endpoint, userID: CoreFixtures.me.id,
                                               credential: BearerCredential(token: "synthetic-restart", kind: .session)!)

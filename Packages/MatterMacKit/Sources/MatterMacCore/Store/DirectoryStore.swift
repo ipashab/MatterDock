@@ -75,7 +75,10 @@ public struct DirectoryStore: Sendable {
     /// Whether archived channels can be browsed (v10 setting; always on in v11).
     public var viewArchivedChannels = true
     /// Local, in-memory presentation choice ("Group unread channels separately").
-    public var groupsUnreads = false
+    /// Политика форка MatterDock: включено по умолчанию — каналы с новыми
+    /// сообщениями (незамьюченные или с упоминаниями) поднимаются в группу
+    /// Unreads вверху сайдбара, как в официальном клиенте.
+    public var groupsUnreads = true
     /// The active channel stays in the Unreads group until the user leaves it.
     public var stickyUnread: ChannelID?
     /// Emoji the user reacted with, most recent first (bounded; kept in the cache).

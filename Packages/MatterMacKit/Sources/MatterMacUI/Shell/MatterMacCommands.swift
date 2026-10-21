@@ -18,9 +18,7 @@ public struct MatterMacCommands: Commands {
 
     public var body: some Commands {
         CommandGroup(replacing: .appInfo) {
-            Button("About MatterMac") { environment.appModel?.isCompatibilityVisible = true }
-            Button("Check for Updates…") { environment.updater?.check(userInitiated: true) }
-                .disabled(environment.updater == nil)
+            Button("About MatterDock") { environment.appModel?.isCompatibilityVisible = true }
         }
         CommandGroup(replacing: .help) {
             Button("Keyboard Shortcuts") { environment.appModel?.isShortcutsVisible = true }

@@ -50,4 +50,33 @@ struct RenderingTests {
         #expect(renderer.render(document).string.contains("10 more rows not shown"))
         #expect(renderer.render(document, characterLimit: 12).length <= 13)
     }
+
+    /// Регрессия: у `NSTextBlock` ширина контента по умолчанию нулевая, и без явного
+    /// растягивания TextKit выдаёт блоку нулевой прямоугольник — рамка кода, цитаты,
+    /// разделителя и вложения не рисуется вообще. Прямоугольник рисования обязан
+    /// занимать всю ширину контейнера.
+    @Test func decoratedBlocksSpanTheFullContainerWidth() throws {
+        let document = MarkupParser.parse("> quoted text\n\n```\ncoded text\n```\n\n---")
+        let text = MessageRenderer().render(document)
+        let view = MessageBodyTextView(usingTextLayoutManager: false)
+        view.configureForTimeline()
+        view.setText(text, width: 420)
+        let manager = try #require(view.layoutManager)
+        let container = try #require(view.textContainer)
+        manager.ensureLayout(for: container)
+
+        let string = text.string as NSString
+        for needle in ["quoted text", "coded text"] {
+            let location = string.range(of: needle).location
+            #expect(location != NSNotFound, "нет подстроки \(needle) в отрендеренном тексте")
+            guard location != NSNotFound else { continue }
+            let style = try #require(text.attribute(.paragraphStyle, at: location, effectiveRange: nil)
+                                    as? NSParagraphStyle)
+            let block = try #require(style.textBlocks.first)
+            let bounds = manager.boundsRect(for: block, at: manager.glyphIndexForCharacter(at: location),
+                                           effectiveRange: nil)
+            #expect(bounds.minX == 0, "блок \(needle) начинается не от левого края контейнера")
+            #expect(bounds.width == 420, "блок \(needle) шире/уже контейнера: \(bounds.width)")
+        }
+    }
 }

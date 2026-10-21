@@ -45,6 +45,7 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
     private var fileChipViews: [FileChipView] = []
     private var attachmentOverflowLabel: TimelineLabel?
     private var reactionViews: [ReactionChipView] = []
+    private var displayedReactions: [ReactionGroup] = []
     private var reactionOverflowLabel: TimelineLabel?
     private var linkPreviewView: LinkPreviewCardView?
     private var linkPreviewRequest: TimelineImageRequest?
@@ -303,6 +304,9 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
 
     private func configureReactions(post: PostPresentation, fonts: TimelineFonts) {
         guard let host else { return }
+        // Те же границы, что у цикла ниже: кадры чипов задаёт rowLayout.
+        displayedReactions = Array(post.reactions.prefix(
+            min(TimelineRowMetrics.maximumDisplayedReactions, rowLayout.reactions.count)))
         for (index, reaction) in post.reactions.prefix(TimelineRowMetrics.maximumDisplayedReactions).enumerated()
             where index < rowLayout.reactions.count {
             if index == reactionViews.count {
@@ -321,8 +325,9 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
             }
             view.frame = rowLayout.reactions[index]
             view.isHidden = false
+            // Подсказку реакторов рисует ReactionHoverPanel (мгновенно, у чипа);
+            // нативный toolTip оставался бы с системной задержкой поверх панели.
             let reactors = TimelineStrings.reactors(reaction)
-            view.toolTip = reactors
             view.setAccessibilityLabel(TimelineStrings.reactionAccessibility(
                 emoji: emoji, name: reaction.emojiName, count: reaction.count,
                 includesYou: reaction.includesCurrentUser))
@@ -342,6 +347,15 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
                 string: TimelineStrings.moreReactions(post.reactions.count - TimelineRowMetrics.maximumDisplayedReactions),
                 attributes: [.font: fonts.meta, .foregroundColor: NSColor.secondaryLabelColor])
         }
+    }
+
+    /// Чип реакции под точкой в координатах ячейки — для hover-панели реакторов.
+    func reactionChip(at point: NSPoint) -> (group: ReactionGroup, frame: CGRect)? {
+        for (index, frame) in rowLayout.reactions.enumerated()
+        where index < displayedReactions.count && frame.contains(point) {
+            return (displayedReactions[index], frame)
+        }
+        return nil
     }
 
     private func configurePending(post: PostPresentation, fonts: TimelineFonts) {

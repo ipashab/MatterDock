@@ -358,9 +358,7 @@ struct NotificationPreferenceSessionTests {
         var snapshot = try #require(await updates.next())
         while snapshot.display.nameFormat != .fullName { snapshot = try #require(await updates.next()) }
         #expect(snapshot.display.militaryTime == true)
-        await #expect(throws: UserFacingError.unsupportedCapability("collapsed_reply_threads")) {
-            try await h.session.setCollapsedThreads(true)
-        }
+        // MatterDock: свёрнутые треды всегда включены — тумблер preference удалён.
         // Another client's change arrives as a realtime event.
         await h.realtime.push(.preferencesChanged([Preference(category: "display_settings", name: "use_military_time",
                                                               value: "false")]))
@@ -369,7 +367,9 @@ struct NotificationPreferenceSessionTests {
         _ = await h.session.shutdown(revokeServerSession: false)
     }
 
-    @Test func turningCollapsedThreadsOnReloadsTheVisibleChannel() async throws {
+    @Test func repliesNeverEnterTheChannelWindowRegardlessOfServerConfig() async throws {
+        // Политика форка: даже при `CollapsedThreads: default_off` ответы
+        // не попадают в основное окно канала.
         let h = await signedIn(collapsedThreads: "default_off")
         await h.openChannel()
         let reply = CoreFixtures.post(70, channel: h.channel.id, user: CoreFixtures.bob.id, message: "reply",
@@ -377,16 +377,13 @@ struct NotificationPreferenceSessionTests {
         h.service.withState { $0.posts[reply.id] = reply }
         await h.realtime.push(.posted(PostedEvent(post: reply, channelType: .open, teamID: CoreFixtures.team.id,
                                                   mentionsCurrentUser: false, setOnline: true)))
-        #expect(await eventually { await h.windowIDs().contains(reply.id) })
-        #expect(await h.session.accountSettings().display.canChangeCollapsedThreads)
-        let pageLoads = h.service.calls.filter { $0 == "posts" }.count
-        try await h.session.setCollapsedThreads(true)
+        // Ответ учтён в корне треда (счётчик вырос) — событие обработано…
+        let rootID = CoreFixtures.post(0, channel: h.channel.id).id
+        #expect(await eventually { await h.session.store.post(rootID)?.replyCount == 1 })
         #expect(await h.session.collapsedThreadsActive)
-        #expect(await eventually { h.service.calls.filter { $0 == "posts" }.count > pageLoads })
-        #expect(await eventually {
-            let ids = await h.windowIDs()
-            return !ids.contains(reply.id) && !ids.isEmpty
-        })
+        // …но в окно канала ответ не попал — только корни.
+        let ids = await h.windowIDs()
+        #expect(!ids.contains(reply.id) && !ids.isEmpty)
         _ = await h.session.shutdown(revokeServerSession: false)
     }
 }

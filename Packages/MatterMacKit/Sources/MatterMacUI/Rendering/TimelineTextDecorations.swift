@@ -47,6 +47,21 @@ nonisolated final class TimelineTextBlock: NSTextBlock {
         return copy
     }
 
+    /// Ширина контента у `NSTextBlock` по умолчанию равна нулю, и TextKit выдаёт блоку
+    /// нулевой прямоугольник рисования — `drawBackground` тогда ничего не рисует.
+    /// Растягиваем контент на всю предложенную ширину, вычитая собственные правые
+    /// слои (padding/border/margin), чтобы рамка блока заканчивалась ровно на правом
+    /// крае контейнера. Для вложенных блоков `rect` уже сужен внешним блоком.
+    override func rectForLayout(at startingPoint: NSPoint, in rect: NSRect,
+                                textContainer: NSTextContainer, characterRange charRange: NSRange) -> NSRect {
+        var contentRect = super.rectForLayout(at: startingPoint, in: rect, textContainer: textContainer,
+                                              characterRange: charRange)
+        let rightInset = width(for: .padding, edge: .maxX) + width(for: .border, edge: .maxX)
+            + width(for: .margin, edge: .maxX)
+        contentRect.size.width = max(0, NSMaxX(rect) - contentRect.minX - rightInset)
+        return contentRect
+    }
+
     override func drawBackground(withFrame frameRect: NSRect, in controlView: NSView?, characterRange charRange: NSRange,
                                  layoutManager: NSLayoutManager) {
         // `frameRect` is the block's bounds rectangle: padding and border, no margins.

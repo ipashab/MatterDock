@@ -402,14 +402,10 @@ public actor ServerSession {
 
     // MARK: - Helpers
 
-    var collapsedThreadsActive: Bool {
-        switch capabilities.collapsedThreads {
-        case .disabled, .unknown: return false
-        case .alwaysOn: return true
-        case .defaultOn: return directory.collapsedThreadsPreference ?? true
-        case .defaultOff: return directory.collapsedThreadsPreference ?? false
-        }
-    }
+    // Политика форка MatterDock: свернутые треды включены всегда. Ответы живут
+    // только в панели обсуждения, а не в основном таймлайне канала — как в
+    // официальном клиенте. Конфигурация сервера и preference игнорируются.
+    var collapsedThreadsActive: Bool { true }
 
     func now() -> MattermostTimestamp { MattermostTimestamp(date: deps.wallClock.now()) }
 

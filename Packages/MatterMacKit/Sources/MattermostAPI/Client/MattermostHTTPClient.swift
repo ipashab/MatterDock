@@ -734,12 +734,30 @@ public final class MattermostHTTPClient: MattermostService {
         if case .proxiedImage = resource { isProxied = true }
         // Without a server proxy `/image` answers with a redirect to the third-party
         // site; it is never followed, so nothing leaves the server's origin.
-        let request = HTTPRequest(method: .get, url: apiURL(segments, query), headers: ["Accept": "image/*"],
+        let request = HTTPRequest(method: .get, url: apiURL(segments, query),
+                                  headers: ["Accept": "image/*"],
                                   credential: credential, allowsRedirects: !isProxied)
-        let response = try await pipeline.execute(request, priority: .background,
+        var response = try await pipeline.execute(request, priority: .background,
                                                   limits: ResponseLimits(maximumBodyBytes: limit))
+        // MatterDock: серверы Time Messenger отдают медиа-тела в zstd: их nginx
+        // кеширует варианты по URL и игнорирует Vary, а URLSession не декодирует
+        // zstd и не может отправить запрос без Accept-Encoding. Повторяем запрос
+        // сырым HTTP/1.1: без этого заголовка, с уникальным параметром против
+        // кеша, тело раскодируется из chunked-кадров (решение docs/decisions/0039).
+        if Self.isZstdEncoded(response) {
+            response = try await RawZstdBypass.fetch(request, limits: ResponseLimits(maximumBodyBytes: limit))
+            // Повтор всё ещё вернул zstd — тело нечитаемо, честная ошибка
+            // вместо мусорных байтов в кеш.
+            if Self.isZstdEncoded(response) { throw .malformedResponse }
+        }
         guard let type = response.mediaType, type.hasPrefix("image/") else { throw .malformedResponse }
         return response.body
+    }
+
+    /// MatterDock: `true`, если успешный ответ несёт тело, принудительно сжатое
+    /// zstd (Time Messenger). URLSession и Compression его не декодируют.
+    static func isZstdEncoded(_ response: HTTPResponse) -> Bool {
+        response.isSuccess && response.headers["Content-Encoding"]?.lowercased().contains("zstd") == true
     }
 
     static func imagePath(_ resource: ImageResource) throws(APIError) -> ([String], [URLQueryItem]) {
@@ -832,13 +850,28 @@ public final class MattermostHTTPClient: MattermostService {
                                   headers: ["Accept": "*/*"], credential: credential, timeout: HTTPRequest.transferTimeout)
         let scoped = destination.startAccessingSecurityScopedResource()
         defer { if scoped { destination.stopAccessingSecurityScopedResource() } }
-        let staging = try DownloadStaging.prepare(destination: destination)
+        var staging = try DownloadStaging.prepare(destination: destination)
         let transport = pipeline.transport
-        let handle = staging.handle
         do throws(APIError) {
-            let response = try await pipeline.transfer { () async throws(APIError) -> HTTPResponse in
-                try await transport.download(request, to: handle, limits: ResponseLimits(maximumBodyBytes: Int64.max),
+            let firstHandle = staging.handle
+            var response = try await pipeline.transfer { () async throws(APIError) -> HTTPResponse in
+                try await transport.download(request, to: firstHandle, limits: ResponseLimits(maximumBodyBytes: Int64.max),
                                              progress: progress)
+            }
+            // MatterDock: при принудительном zstd-сжатии (Time Messenger) первая
+            // попытка сохранила в staging сжатые байты — повторяем скачивание
+            // сырым HTTP/1.1 без Accept-Encoding: с уникальным параметром
+            // против кеша и раскодировкой chunked-кадров сервер отдаёт
+            // несжатое тело (решение docs/decisions/0039).
+            if Self.isZstdEncoded(response) {
+                staging.discard()
+                staging = try DownloadStaging.prepare(destination: destination)
+                response = try await RawZstdBypass.transfer(request, to: staging.handle,
+                                                            limits: ResponseLimits(maximumBodyBytes: Int64.max),
+                                                            progress: progress)
+                // Повтор всё ещё вернул zstd — файл нечитаем, честная ошибка
+                // вместо битой загрузки на диск.
+                if Self.isZstdEncoded(response) { throw .malformedResponse }
             }
             if let error = HTTPStatusMapping.error(for: response) { throw error }
             guard !Task.isCancelled else { throw .cancelled }
