@@ -2571,5 +2571,14 @@ prefetch (SPEC §7). Рендер: в пузыре карточка над те�
 все зелёные; полный прогон пакета зелёный, кроме известного pre-existing
 flake `mediaViewer…isZoomedIn` (параллельная нагрузка).
 
-Следующая задача: выпуск v0.11.0 (bump, тег, DMG по FORK.md).
+Релиз **v0.11.0** (build 4): Release universal (arm64+x86_64) подписан
+«MatterDock Dev», `codesign --verify --deep --strict` OK; DMG `hdiutil -format
+UDZO` + симлинк Applications (`hdiutil verify` VALID, 13 MB), ZIP `ditto
+--keepParent` (11 MB). Тег `v0.11.0` запушен (бамп `528fe5b`), релиз
+опубликован с обоими артефактами:
+https://github.com/ipashab/MatterDock/releases/tag/v0.11.0
+
+Следующая задача: кандидаты по API-гэпам (управление папками, thread-level
+Mark as Unread, permalink-карточки, post priority, insights) — выбор за
+владельцем.
 
