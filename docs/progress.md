@@ -2617,3 +2617,25 @@ https://github.com/ipashab/MatterDock/releases/tag/v0.11.1
 Следующая задача: подтверждение пользователя, что карточка «Рил?» видна
 в канале Бродяги; далее — кандидаты по API-гэпам (папки, thread-level
 Mark as Unread, permalink-карточки, post priority, insights).
+
+## 2026-10-22 (4) — ответ в канале не появлялся после кэш-сида (v0.11.2)
+
+Re-репорт после v0.11.1: «Рил?» в канале по-прежнему без карточки. Пробежка
+по слоям: сервер в точных параметрах клиента (`per_page=60`,
+`skipFetchThreads`, `collapsedThreads`) отдаёт embed и в list-странице, и в
+unread-якоре; декодер и билдер покрыты тестами; в /Applications — нужный
+бинарник. Корень оказался в `PostStore.upsert`: окно канала сидится из
+ContentCache (тред — нет), кэш писался старой сборкой без полей цитаты, а
+свежая страница приходит с тем же `update_at` (пост не редактировали) —
+tie-ветка merge оставляла хранимую копию и молча выбрасывала embed.
+
+Фикс `d454ec4`: в tie-ветке дозаполнять `quotedPost`/`props.quotePostID`
+(тот же паттерн, что у `linkPreview`/`customEmojis`), в ветке «новее» —
+хранить уже известный контекст при лёгком снапшоте. Тесты: backfill при
+равном update_at + сохранение при новом лёгком снапшоте, red-check
+(убрали backfill — 3 issues). Полный пакет зелёный (245+29+18+208+78).
+
+Релиз **v0.11.2** (build 6, бамп в `d454ec4`): Release universal, подпись
+OK; DMG 13 MB + ZIP 11 MB, `hdiutil verify` VALID; тег запушен;
+https://github.com/ipashab/MatterDock/releases/tag/v0.11.2 — приложение
+установлено в /Applications и перезапущено.
