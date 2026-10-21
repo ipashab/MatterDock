@@ -35,21 +35,41 @@ struct BubbleLayoutTests {
 
     @Test func sidesAndCorners() {
         let width: CGFloat = 400
-        let bubble = metrics.messageLayout(for: post(own: false), width: width, bodyHeight: 20,
-                                           renderer: MessageRenderer(), style: .bubble).bubble!
-        // Чужое — слева, с полкой аватара.
-        #expect(bubble.frame.minX == TimelineRowMetrics.contentLeading)
+        let incoming = metrics.messageLayout(for: post(own: false), width: width, bodyHeight: 20,
+                                             renderer: MessageRenderer(), style: .bubble)
+        let bubble = incoming.bubble!
+        // Чужое — слева, с полкой аватара 38 (рендер: avatar-38).
+        #expect(bubble.frame.minX == TimelineRowMetrics.bubbleLeading)
+        #expect(incoming.avatar == CGRect(x: TimelineRowMetrics.horizontalInset, y: incoming.avatar!.minY,
+                                          width: TimelineRowMetrics.BubbleMetrics.avatarSize,
+                                          height: TimelineRowMetrics.BubbleMetrics.avatarSize))
         let own = metrics.messageLayout(for: post(own: true), width: width, bodyHeight: 20,
                                         renderer: MessageRenderer(), style: .bubble).bubble!
         #expect(own.frame.maxX == width - TimelineRowMetrics.horizontalInset)
-        // Чужое одиночное: все углы полные, хвост в левом нижнем.
-        #expect(bubble.topLeft == 12 && bubble.bottomLeft == 4 && bubble.bottomRight == 12)
-        #expect(own.topLeft == 12 && own.bottomRight == 4 && own.bottomLeft == 12)
+        // Чужое одиночное: все углы полные, хвост в левом нижнем (радиусы 14/4).
+        #expect(bubble.topLeft == 14 && bubble.bottomLeft == 4 && bubble.bottomRight == 14)
+        #expect(own.topLeft == 14 && own.bottomRight == 4 && own.bottomLeft == 14)
         // Continuation внутри группы: сплюснут верх со стороны автора, meta нет.
         let continued = metrics.messageLayout(for: post(own: true, continuation: true, last: false), width: width,
                                                bodyHeight: 20, renderer: MessageRenderer(), style: .bubble).bubble!
-        #expect(continued.topRight == 4 && continued.bottomRight == 12)
+        #expect(continued.topRight == 4 && continued.bottomRight == 14)
         #expect(continued.meta == nil, "время покажет hover, meta только у хвоста")
+    }
+
+    @Test func bubbleWidthCappedAtColumnFraction() {
+        // Рендер: `.bubble-col { max-width: 76% }` — и своей, и чужой стороны.
+        let wide: CGFloat = 2000
+        let ownInner = metrics.bubbleInnerWidth(for: post(own: true), layoutWidth: wide)
+        let incomingInner = metrics.bubbleInnerWidth(for: post(own: false), layoutWidth: wide)
+        let rowContent = wide - 2 * TimelineRowMetrics.horizontalInset
+        let expected = rowContent * TimelineRowMetrics.BubbleMetrics.columnFraction
+            - 2 * TimelineRowMetrics.BubbleMetrics.horizontalPadding
+        #expect(abs(ownInner - expected) < 1, "свой пузырь ≤76% строки")
+        #expect(abs(incomingInner - expected) < 1, "чужой пузырь ≤76% строки")
+        let ownBubble = metrics.messageLayout(for: post(own: true), width: wide, bodyHeight: 200,
+                                              bodyUsedWidth: 1900, renderer: MessageRenderer(), style: .bubble).bubble!
+        #expect(ownBubble.frame.width <= rowContent * TimelineRowMetrics.BubbleMetrics.columnFraction + 0.5,
+                "широкий текст не раздувает пузырь за долю колонки")
     }
 
     @Test func hugShrinksShortTextAndFullWidthKept() {
@@ -59,12 +79,37 @@ struct BubbleLayoutTests {
             MessageDocument(blocks: [.paragraph([.text(String(repeating: "word ", count: 120))])]),
             isCollapsed: false)), width: 400, bodyHeight: 160, bodyUsedWidth: 368 - 20, renderer: MessageRenderer(), style: .bubble)
         #expect(layout.bubble!.frame.width < full.bubble!.frame.width, "короткий текст сжимает пузырь")
-        #expect(layout.body.width == TimelineRowMetrics.BubbleMetrics.minimumInnerWidth,
-                "тело не Уже минимальной ширины пузыря")
+        #expect(layout.body.width >= TimelineRowMetrics.BubbleMetrics.minimumInnerWidth
+                && layout.body.width < full.body.width, "тело не Уже минимальной ширины пузыря")
         // Без точной меры (оценка) пузырь не сжимается.
         let estimate = metrics.messageLayout(for: post(own: true), width: 400, bodyHeight: 20,
                                              renderer: MessageRenderer(), exact: false, style: .bubble)
         #expect(estimate.bubble!.frame.width > layout.bubble!.frame.width, "оценка не сжимает")
+    }
+
+    @Test func singleLineMetaSharesBodyLine() {
+        // Рендер: у однострочного тела время садится в ту же строку («ok · 12:34»).
+        let fonts = metrics.fonts
+        let layout = metrics.messageLayout(for: post(own: true), width: 400, bodyHeight: fonts.bodyLineHeight,
+                                           bodyUsedWidth: 30, renderer: MessageRenderer(), style: .bubble)
+        let meta = layout.bubble!.meta
+        #expect(meta != nil, "хвост группы несёт meta")
+        #expect(abs(meta!.maxY - layout.body.maxY) < 1, "meta прижат к низу однострочного тела")
+        #expect(meta!.maxX <= layout.bubble!.frame.maxX - TimelineRowMetrics.BubbleMetrics.horizontalPadding)
+        let expectedHeight = TimelineRowMetrics.BubbleMetrics.verticalTopPadding + fonts.bodyLineHeight
+            + TimelineRowMetrics.BubbleMetrics.verticalBottomPadding
+        #expect(abs(layout.bubble!.frame.height - expectedHeight) < 1,
+                "одна строка с inline meta без отдельной meta-строки")
+    }
+
+    @Test func multiLineMetaKeepsItsOwnLine() {
+        // Многострочное тело держит meta ниже — отдельной строкой (ADR 0041 §4).
+        let layout = metrics.messageLayout(for: post(own: true), width: 400, bodyHeight: 3 * metrics.fonts.bodyLineHeight,
+                                           bodyUsedWidth: 30, renderer: MessageRenderer(), style: .bubble)
+        let meta = layout.bubble!.meta!
+        #expect(meta.minY >= layout.body.maxY, "meta многострочника ниже тела")
+        #expect(abs(meta.maxY - (layout.bubble!.frame.maxY
+            - TimelineRowMetrics.BubbleMetrics.verticalBottomPadding)) < 1)
     }
 
     @Test func lastInGroupGetsMetaInsideBubble() {
@@ -122,6 +167,19 @@ struct BubbleLayoutTests {
                                            renderer: MessageRenderer(), style: .bubble)
         #expect(layout.bubble!.frame.maxX == 400 - TimelineRowMetrics.horizontalInset, "pending — справа")
         #expect(layout.pending != nil, "статус отправки на месте")
+    }
+
+    @Test func chatColumnCentersAtCap() {
+        // Рендер: `.chat-inner { max-width: 860px; margin: 0 auto }`.
+        let wide = CGRect(x: 0, y: 0, width: 1200, height: 700)
+        let capped = TimelineViewController.chatColumnFrame(in: wide, capped: true)
+        #expect(capped.width == TimelineViewController.chatColumnMaxWidth)
+        #expect(abs(capped.midX - wide.midX) < 1, "колонка по центру контейнера")
+        let narrow = TimelineViewController.chatColumnFrame(in: CGRect(x: 0, y: 0, width: 700, height: 700),
+                                                            capped: true)
+        #expect(narrow.width == 700, "узкий контейнер не центрируется")
+        #expect(TimelineViewController.chatColumnFrame(in: wide, capped: false) == wide,
+                "flat-режим занимает всю ширину")
     }
 
     @Test func estimateMatchesExactDirection() {

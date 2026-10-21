@@ -41,7 +41,30 @@ public final class TimelineViewController: NSViewController {
             guard oldValue != usesBubbleStyle else { return }
             layouter.style = usesBubbleStyle ? .bubble : .flat
             rendererDidChange(fontScaleChanged: true)
+            if isViewLoaded { view.needsLayout = true }
         }
+    }
+
+    /// Предельная ширина колонки чата в пузырном режиме (рендер OpenDesign:
+    /// `.chat-inner { max-width: 860px; margin: 0 auto }`).
+    static let chatColumnMaxWidth: CGFloat = 860
+
+    /// Рамка колонки чата в контейнере: плоский режим — вся ширина, пузырный —
+    /// ≤860 pt по центру при широком контейнере.
+    static func chatColumnFrame(in container: NSRect, capped: Bool) -> NSRect {
+        guard capped, container.width > chatColumnMaxWidth else { return container }
+        let x = ((container.width - chatColumnMaxWidth) / 2).rounded()
+        return NSRect(x: x, y: container.minY, width: chatColumnMaxWidth, height: container.height)
+    }
+
+    /// Пузырная колонка: при широком контейнере скролл-вью вжимается в 860 pt
+    /// и центрируется вручную (autoresizingMask на это время снимается).
+    func layoutChatColumn() {
+        guard isViewLoaded else { return }
+        let target = Self.chatColumnFrame(in: view.bounds, capped: usesBubbleStyle)
+        guard scrollView.frame != target else { return }
+        scrollView.frame = target
+        scrollView.autoresizingMask = target == view.bounds ? [.width, .height] : []
     }
 
     /// 24-hour (`true`) or 12-hour message times from the account's server
@@ -236,6 +259,7 @@ public final class TimelineViewController: NSViewController {
 
     public override func viewDidLayout() {
         super.viewDidLayout()
+        layoutChatColumn()
         layoutNewMessagesButton()
         if !isPerformingUpdate, snapshot != nil, widthBucket() != currentToken.bucket {
             performUpdate { handleViewportResize() }

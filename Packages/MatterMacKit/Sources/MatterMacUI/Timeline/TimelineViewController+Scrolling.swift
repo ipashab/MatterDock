@@ -443,7 +443,9 @@ extension TimelineViewController {
     func layoutNewMessagesButton() {
         guard isViewLoaded else { return }
         var frame = NSRect(origin: .zero, size: newMessagesButton.fittingPillSize)
-        frame.origin.x = floor((view.bounds.width - frame.width) / 2)
+        // Центр над чат-колонкой: в пузырном режиме scrollView уже вжат в 860 pt.
+        let anchor = scrollView.frame
+        frame.origin.x = anchor.minX + floor((anchor.width - frame.width) / 2)
         let bottomInset = scrollView.contentView.contentInsets.bottom
         frame.origin.y = view.isFlipped ? view.bounds.height - frame.height - 12 - bottomInset : 12 + bottomInset
         newMessagesButton.frame = frame

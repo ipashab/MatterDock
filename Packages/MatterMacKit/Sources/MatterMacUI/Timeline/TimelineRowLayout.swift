@@ -102,28 +102,42 @@ struct TimelineRowMetrics {
     /// Tall enough for an Apple Color Emoji line (taller than the text line) plus insets.
     var reactionChipHeight: CGFloat { ceil(max(fonts.bodyLineHeight, fonts.emojiLineHeight) + 6) }
 
-    // Пузыри (ADR 0041 §3). Константы прототипа: скругление 12 pt, хвост 4 pt.
+    // Пузыри (ADR 0041 §3). Константы рендера OpenDesign: скругление 14 pt
+    // (хвост 4 pt), отступы 7/12/8, доля пузыря ≤76% строки, аватар входящего 38.
     enum BubbleMetrics {
-        static let cornerRadius: CGFloat = 12
+        static let cornerRadius: CGFloat = 14
         static let tailCornerRadius: CGFloat = 4
-        static let horizontalPadding: CGFloat = 10
-        static let verticalPadding: CGFloat = 6
+        static let horizontalPadding: CGFloat = 12
+        static let verticalTopPadding: CGFloat = 7
+        static let verticalBottomPadding: CGFloat = 8
         /// Зазор между последним контентом пузыря и meta-строкой.
         static let metaSpacing: CGFloat = 2
+        /// Зазор между однострочным телом и meta, уместившейся в ту же строку.
+        static let inlineMetaGap: CGFloat = 10
         /// Минимальная ширина текста внутри пузыря: отдельно от широкого flat-минимума,
         /// чтобы короткие «ok»-пузыри оставались компактными.
         static let minimumInnerWidth: CGFloat = 44
+        /// Аватар входящего в пузырном режиме (рендер: avatar-38); flat остаётся 32.
+        static let avatarSize: CGFloat = 38
+        static let avatarGap: CGFloat = 8
+        /// Доля ширины пузыря от контентной ширины строки (рендер: max-width 76%).
+        static let columnFraction: CGFloat = 0.76
     }
 
-    /// Ширина текстового содержимого пузыря при полной развёртке (аватар и
-    /// горизонтальные отступы учтены; свою сторону не сжимает аватар). Текст
-    /// измеряется ровно на этой ширине, поэтому hug никогда не перевёрстывает
-    /// строки.
+    /// Левый край пузыря входящего: горизонтальный отступ + аватар 38 + зазор.
+    static var bubbleLeading: CGFloat { horizontalInset + BubbleMetrics.avatarSize + BubbleMetrics.avatarGap }
+
+    /// Ширина текстового содержимого пузыря при полной развёртке: до 76% контентной
+    /// ширины строки (рендер `.bubble-col`), своей и чужой стороны. Аватар и
+    /// горизонтальные отступы учтены; текст измеряется ровно на этой ширине, поэтому
+    /// hug никогда не перевёрстывает строки.
     func bubbleInnerWidth(for post: PostPresentation, layoutWidth: CGFloat) -> CGFloat {
+        let rowContent = layoutWidth - 2 * Self.horizontalInset
+        let fractionCap = max(Self.minimumContentWidth, rowContent * BubbleMetrics.columnFraction)
         let available = post.author.isCurrentUser
-            ? layoutWidth - 2 * Self.horizontalInset
-            : Self.contentWidth(forLayoutWidth: layoutWidth)
-        return max(Self.minimumContentWidth, available - 2 * BubbleMetrics.horizontalPadding)
+            ? rowContent
+            : layoutWidth - Self.bubbleLeading - Self.horizontalInset
+        return max(Self.minimumContentWidth, min(available, fractionCap) - 2 * BubbleMetrics.horizontalPadding)
     }
 
     /// Текст meta-строки в хвосте пузыря: время ± «(edited)» (ADR 0041 §4).
@@ -230,20 +244,31 @@ struct TimelineRowMetrics {
         let headerNeeded = !post.isContinuation
         let innerMax = bubbleInnerWidth(for: post, layoutWidth: width)
 
+        // Meta в хвосте: у однострочного тела время садится в ту же строку
+        // («ok · 12:34»); многострочники и аттачменты держат meta ниже тела.
+        let metaText: NSAttributedString? = post.isLastInGroup ? bubbleMetaText(for: post) : nil
+        let metaWidth = metaText.map { DrawnText.width(of: $0) } ?? 0
+
         // Hug: в точном проходе короткий текст сжимает пузырь. Большие сущности
-        // (превью, файлы) и pass оценки используют полную ширину.
+        // (превью, файлы) и оценочный проход используют полную ширину.
         var inner = innerMax
         if exact, post.linkPreview == nil, post.files.isEmpty {
             inner = max(min(bodyUsedWidth, innerMax), Self.BubbleMetrics.minimumInnerWidth)
         }
+        let inlineMeta = exact && metaText != nil && post.linkPreview == nil && post.files.isEmpty
+            && bodyUsedWidth > 0 && bodyHeight <= ceil(fonts.bodyLineHeight) + 0.5
+            && bodyUsedWidth + Self.BubbleMetrics.inlineMetaGap + metaWidth <= innerMax
         if post.isLastInGroup {
-            let metaWidth = DrawnText.width(of: bubbleMetaText(for: post))
-            inner = max(inner, min(metaWidth, innerMax))
+            if inlineMeta {
+                inner = min(max(inner, bodyUsedWidth + Self.BubbleMetrics.inlineMetaGap + metaWidth), innerMax)
+            } else {
+                inner = max(inner, min(metaWidth, innerMax))
+            }
         }
 
         let padding = Self.BubbleMetrics.horizontalPadding
         let bubbleWidth = inner + 2 * padding
-        let bubbleX: CGFloat = own ? width - Self.horizontalInset - bubbleWidth : Self.contentLeading
+        let bubbleX: CGFloat = own ? width - Self.horizontalInset - bubbleWidth : Self.bubbleLeading
         // Полка аксессуаров под пузырём: от Leading edge содержимого пузыря.
         let accessoryX = bubbleX + padding
         let accessoryWidth = max(Self.minimumContentWidth,
@@ -256,13 +281,14 @@ struct TimelineRowMetrics {
         }
         // Имя автора — над пузырём входящего; у своего имени нет.
         if headerNeeded, !own {
-            layout.avatar = CGRect(x: Self.horizontalInset, y: y, width: Self.avatarSize, height: Self.avatarSize)
+            layout.avatar = CGRect(x: Self.horizontalInset, y: y,
+                                    width: Self.BubbleMetrics.avatarSize, height: Self.BubbleMetrics.avatarSize)
             layout.header = CGRect(x: bubbleX, y: y, width: accessoryWidth, height: fonts.authorLineHeight)
             y += fonts.authorLineHeight + 2
         }
 
         let bubbleTop = y
-        var innerY = bubbleTop + Self.BubbleMetrics.verticalPadding
+        var innerY = bubbleTop + Self.BubbleMetrics.verticalTopPadding
         layout.body = CGRect(x: bubbleX + padding, y: innerY, width: inner, height: bodyHeight)
         innerY += bodyHeight
 
@@ -294,18 +320,25 @@ struct TimelineRowMetrics {
         }
 
         var bubble = BubbleLayout(frame: .zero, topLeft: 0, topRight: 0, bottomLeft: 0, bottomRight: 0, meta: nil)
-        if post.isLastInGroup {
-            innerY += Self.BubbleMetrics.metaSpacing
-            let metaWidth = min(DrawnText.width(of: bubbleMetaText(for: post)) + 4, inner)
-            bubble.meta = CGRect(x: bubbleX + bubbleWidth - padding - metaWidth, y: innerY,
-                                 width: metaWidth, height: fonts.metaLineHeight)
-            innerY += fonts.metaLineHeight
+        if metaText != nil {
+            let metaFrameWidth = min(metaWidth + 4, inner)
+            if inlineMeta {
+                // Время в строке тела: прижато к низу однострочного тела.
+                bubble.meta = CGRect(x: bubbleX + bubbleWidth - padding - metaFrameWidth,
+                                     y: layout.body.maxY - fonts.metaLineHeight,
+                                     width: metaFrameWidth, height: fonts.metaLineHeight)
+            } else {
+                innerY += Self.BubbleMetrics.metaSpacing
+                bubble.meta = CGRect(x: bubbleX + bubbleWidth - padding - metaFrameWidth, y: innerY,
+                                     width: metaFrameWidth, height: fonts.metaLineHeight)
+                innerY += fonts.metaLineHeight
+            }
         }
 
         let radius = Self.BubbleMetrics.cornerRadius
         let tail = Self.BubbleMetrics.tailCornerRadius
         bubble.frame = CGRect(x: bubbleX, y: bubbleTop, width: bubbleWidth,
-                               height: innerY - bubbleTop + Self.BubbleMetrics.verticalPadding)
+                               height: innerY - bubbleTop + Self.BubbleMetrics.verticalBottomPadding)
         bubble.topLeft = post.isContinuation && !own ? tail : radius
         bubble.topRight = post.isContinuation && own ? tail : radius
         bubble.bottomLeft = post.isLastInGroup && !own ? tail : radius

@@ -14,7 +14,11 @@ extension ConversationController {
         let points: CGFloat
         switch request {
         case .customEmoji(let id): resource = .customEmoji(id: id); points = 32
-        case .avatar(let user, let revision): resource = .profileImage(user, revision: revision); points = TimelineMetrics.avatarSize
+        case .avatar(let user, let revision):
+            // Пузырный режим показывает аватар 38 pt (flat — 32); берём максимум,
+            // чтобы Retina-битмап хватало обоим потребителям.
+            resource = .profileImage(user, revision: revision)
+            points = max(TimelineMetrics.avatarSize, TimelineRowMetrics.BubbleMetrics.avatarSize)
         case .thumbnail(let file): resource = .fileThumbnail(file); points = TimelineMetrics.maximumThumbnailSize.width
         case .preview(let file): resource = .filePreview(file); points = TimelineMetrics.maximumThumbnailSize.width
         case .linkPreview(let url):

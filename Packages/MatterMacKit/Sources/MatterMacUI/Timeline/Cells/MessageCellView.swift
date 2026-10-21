@@ -15,6 +15,9 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
     /// Total instances ever created (debug counter for bounded-instantiation tests).
     static var instancesCreated = 0
 
+    /// Ширина severity-полосы по левому краю пузыря (рендер: inset 3px).
+    static let severityBandWidth: CGFloat = 3
+
     weak var host: (any TimelineCellHost)?
     private(set) var itemID: TimelineItemID?
     private var post: PostPresentation?
@@ -24,7 +27,8 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
     override func draw(_ dirtyRect: NSRect) {
         if let bubble = rowLayout.bubble, let post {
             // Пузырь (ADR 0041): заливка по стороне автора; серьёзное сообщение
-            // (self-mention) несёт рамку вместо полноширинной заливки flat-режима.
+            // (self-mention) несёт severity-полосу вместо полноширинной заливки
+            // flat-режима.
             let background = post.author.isCurrentUser ? TimelinePalette.bubbleOutgoingBackground
                                                        : TimelinePalette.bubbleIncomingBackground
             background.setFill()
@@ -36,10 +40,14 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
                 Self.bubblePath(bubble).fill()
             }
             if mentionsCurrentUser {
-                let border = Self.bubblePath(bubble)
-                border.lineWidth = 2
-                TimelinePalette.bubbleSeverityBorder.setStroke()
-                border.stroke()
+                // Серьёзное сообщение (self-mention): цветная полоса 3 pt по левому
+                // краю пузыря (рендер `.bubble.sev-*` — inset-полоса, не контур).
+                NSGraphicsContext.saveGraphicsState()
+                Self.bubblePath(bubble).addClip()
+                TimelinePalette.bubbleSeverityBorder.setFill()
+                NSRect(x: bubble.frame.minX, y: bubble.frame.minY,
+                       width: Self.severityBandWidth, height: bubble.frame.height).fill()
+                NSGraphicsContext.restoreGraphicsState()
             }
         } else if mentionsCurrentUser {
             TimelinePalette.mentionRowHighlight.setFill()

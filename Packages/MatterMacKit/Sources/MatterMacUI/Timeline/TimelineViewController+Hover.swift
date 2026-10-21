@@ -281,8 +281,14 @@ extension TimelineViewController {
         if !hoverBar.isHidden, hoverBar.postID == post.postID, let more = hoverBar.button(.more) {
             menu.popUp(positioning: nil, at: NSPoint(x: 0, y: more.bounds.maxY + 4), in: more)
         } else {
+            // Позиция меню — от переднего края пузыря (или контента в flat-режиме).
             let rect = tableView.rect(ofRow: row)
-            menu.popUp(positioning: nil, at: NSPoint(x: TimelineRowMetrics.contentLeading, y: rect.minY + 20), in: tableView)
+            var x = TimelineRowMetrics.contentLeading
+            if usesBubbleStyle, let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? MessageCellView,
+               let bubble = cell.rowLayout.bubble {
+                x = tableView.convert(bubble.frame, from: cell).minX
+            }
+            menu.popUp(positioning: nil, at: NSPoint(x: x, y: rect.minY + 20), in: tableView)
         }
         return true
     }

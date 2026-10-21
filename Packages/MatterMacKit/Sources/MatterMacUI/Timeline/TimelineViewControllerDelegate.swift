@@ -48,7 +48,7 @@ nonisolated public enum TimelineAction: Hashable, Sendable {
 }
 
 /// An image the timeline wants to display. The delegate's image pipeline downsamples to
-/// `TimelineMetrics.avatarSize` / `TimelineMetrics.maximumThumbnailSize` × backing scale.
+/// the largest consumer of the request kind (avatar edge, thumbnail box) × backing scale.
 nonisolated public enum TimelineImageRequest: Hashable, Sendable {
     /// `revision` is the author's `avatarRevision` (server `last_picture_update`).
     case avatar(UserID, revision: Int64)
