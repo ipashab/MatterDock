@@ -18,15 +18,58 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
     weak var host: (any TimelineCellHost)?
     private(set) var itemID: TimelineItemID?
     private var post: PostPresentation?
-    private var rowLayout = MessageRowLayout()
+    private(set) var rowLayout = MessageRowLayout()
     private var mentionsCurrentUser = false
 
     override func draw(_ dirtyRect: NSRect) {
-        if mentionsCurrentUser {
+        if let bubble = rowLayout.bubble, let post {
+            // Пузырь (ADR 0041): заливка по стороне автора; серьёзное сообщение
+            // (self-mention) несёт рамку вместо полноширинной заливки flat-режима.
+            let background = post.author.isCurrentUser ? TimelinePalette.bubbleOutgoingBackground
+                                                       : TimelinePalette.bubbleIncomingBackground
+            background.setFill()
+            Self.bubblePath(bubble).fill()
+            if mentionsCurrentUser {
+                let border = Self.bubblePath(bubble)
+                border.lineWidth = 2
+                TimelinePalette.bubbleSeverityBorder.setStroke()
+                border.stroke()
+            }
+        } else if mentionsCurrentUser {
             TimelinePalette.mentionRowHighlight.setFill()
             bounds.fill()
         }
         super.draw(dirtyRect)
+    }
+
+    /// Контур пузыря с индивидуальными радиусами углов (координаты ячейки
+    /// перевёрнуты: «верх» сообщения — minY).
+    static func bubblePath(_ bubble: BubbleLayout) -> NSBezierPath {
+        let rect = bubble.frame
+        let path = NSBezierPath()
+        path.move(to: NSPoint(x: rect.minX + bubble.topLeft, y: rect.minY))
+        path.line(to: NSPoint(x: rect.maxX - bubble.topRight, y: rect.minY))
+        if bubble.topRight > 0 {
+            path.appendArc(from: NSPoint(x: rect.maxX, y: rect.minY),
+                           to: NSPoint(x: rect.maxX, y: rect.minY + bubble.topRight), radius: bubble.topRight)
+        }
+        path.line(to: NSPoint(x: rect.maxX, y: rect.maxY - bubble.bottomRight))
+        if bubble.bottomRight > 0 {
+            path.appendArc(from: NSPoint(x: rect.maxX, y: rect.maxY),
+                           to: NSPoint(x: rect.maxX - bubble.bottomRight, y: rect.maxY), radius: bubble.bottomRight)
+        }
+        path.line(to: NSPoint(x: rect.minX + bubble.bottomLeft, y: rect.maxY))
+        if bubble.bottomLeft > 0 {
+            path.appendArc(from: NSPoint(x: rect.minX, y: rect.maxY),
+                           to: NSPoint(x: rect.minX, y: rect.maxY - bubble.bottomLeft), radius: bubble.bottomLeft)
+        }
+        path.line(to: NSPoint(x: rect.minX, y: rect.minY + bubble.topLeft))
+        if bubble.topLeft > 0 {
+            path.appendArc(from: NSPoint(x: rect.minX, y: rect.minY),
+                           to: NSPoint(x: rect.minX + bubble.topLeft, y: rect.minY), radius: bubble.topLeft)
+        }
+        path.close()
+        return path
     }
     private var avatarRequest: TimelineImageRequest?
     private var emojiRequests: Set<TimelineImageRequest> = []
@@ -50,7 +93,9 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
     private var linkPreviewView: LinkPreviewCardView?
     private var linkPreviewRequest: TimelineImageRequest?
     /// Time shown in the avatar gutter of a continuation row while hovered/selected.
-    private var hoverTimeLabel: TimelineLabel?
+    private(set) var hoverTimeLabel: TimelineLabel?
+    /// Meta (время ± «изм.») в хвосте пузыря (ADR 0041); nil — flat-режим.
+    private(set) var bubbleMetaLabel: TimelineLabel?
     private(set) var isHoverHighlighted = false
     private var pendingSpinner: NSProgressIndicator?
     private var pendingLabel: TimelineLabel?
@@ -164,6 +209,7 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
         configureLinkPreview(post: post, host: host)
         configureAttachments(post: post, fonts: fonts)
         configureReactions(post: post, fonts: fonts)
+        configureBubbleMeta(post: post, host: host)
 
         if layout.replies != nil {
             let button = repliesButton ?? makeButton(\.repliesButton, style: .link)
@@ -194,11 +240,20 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
         return text
     }
 
-    /// Hover/selection state: continuation rows show their time in the avatar gutter.
+    /// Hover/selection state: continuation rows show their time in the gutter.
+    /// В пузырном режиме (ADR 0041) время в самом пузыре только у хвоста группы,
+    /// поэтому hover-время показываем строкам без meta, а gutter берём со стороны
+    /// автора: своё — слева от пузыря, чужое — как раньше.
     func setHovered(_ hovered: Bool) {
         guard hovered != isHoverHighlighted else { return }
         isHoverHighlighted = hovered
-        guard let post, post.postID != nil, rowLayout.header == nil, let host else {
+        var needsHoverTime = false
+        if let bubble = rowLayout.bubble {
+            needsHoverTime = bubble.meta == nil
+        } else {
+            needsHoverTime = rowLayout.header == nil
+        }
+        guard let post, post.postID != nil, needsHoverTime, let host else {
             hoverTimeLabel?.isHidden = true
             return
         }
@@ -235,6 +290,29 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
         view.isHidden = false
         let link = preview.link
         view.onPress = { [weak self] in self?.host?.perform(.openLink(link)) }
+    }
+
+    /// Meta-строка в хвосте пузыря (ADR 0041): время ± «(edited)»; цвет — по
+    /// поверхности (исходящий — светлый токен, входящий — системный secondary).
+    private func configureBubbleMeta(post: PostPresentation, host: any TimelineCellHost) {
+        guard let frame = rowLayout.bubble?.meta else {
+            bubbleMetaLabel?.isHidden = true
+            return
+        }
+        let label = bubbleMetaLabel ?? makeLabel(\.bubbleMetaLabel)
+        let own = post.author.isCurrentUser
+        let text = NSMutableAttributedString(attributedString: host.rowMetrics.bubbleMetaText(for: post))
+        text.addAttribute(.foregroundColor, value: own ? TimelinePalette.bubbleOutgoingSecondary
+                                                        : NSColor.secondaryLabelColor,
+                          range: NSRange(location: 0, length: text.length))
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .right
+        text.addAttribute(.paragraphStyle, value: paragraph, range: NSRange(location: 0, length: text.length))
+        label.attributedText = text
+        label.isSingleLine = true
+        label.frame = frame
+        label.toolTip = Self.timeToolTip(post)
+        label.isHidden = false
     }
 
     private func headerMeta(post: PostPresentation, fonts: TimelineFonts) -> NSAttributedString {
@@ -482,7 +560,7 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
         resetContent()
     }
 
-    private func resetContent() {
+    func resetContent() {
         releaseImageDemand()
         itemID = nil
         post = nil
@@ -527,6 +605,9 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
         }
         attachmentOverflowLabel?.isHidden = true
         reactionOverflowLabel?.isHidden = true
+        bubbleMetaLabel?.isHidden = true
+        bubbleMetaLabel?.attributedText = NSAttributedString()
+        bubbleMetaLabel?.toolTip = nil
         pendingSpinner?.stopAnimation(nil)
         pendingSpinner?.isHidden = true
         pendingLabel?.isHidden = true
@@ -550,11 +631,19 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
         }
         if let frame = layout.threadContext { threadContextLabel?.frame = frame }
         bodyTextView.frame = layout.body
+        if let frame = layout.bubble?.meta { bubbleMetaLabel?.frame = frame }
         if let label = hoverTimeLabel, !label.isHidden, let fonts = host?.rowMetrics.fonts {
             let height = ceil(fonts.metaLineHeight)
             let baseline = max(0, floor((fonts.bodyLineHeight - height) / 2))
+            // Свой пузырь — правее, hover-время уходит в левый gutter до пузыря.
+            let gutterWidth: CGFloat
+            if let bubble = layout.bubble, post?.author.isCurrentUser == true {
+                gutterWidth = max(40, bubble.frame.minX - 8)
+            } else {
+                gutterWidth = TimelineRowMetrics.contentLeading - 8
+            }
             label.frame = CGRect(x: 2, y: layout.body.minY + baseline + 1,
-                                 width: TimelineRowMetrics.contentLeading - 8, height: height)
+                                 width: gutterWidth - 2, height: height)
         }
         if let frame = layout.linkPreview?.frame { linkPreviewView?.frame = frame }
         if let frame = layout.showMore, let button = showMoreButton {

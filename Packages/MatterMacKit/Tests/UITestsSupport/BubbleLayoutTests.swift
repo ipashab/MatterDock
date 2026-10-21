@@ -138,4 +138,113 @@ struct BubbleLayoutTests {
         #expect(estimated > 0 && exact.height > 0)
         #expect(abs(estimated - exact.height) < exact.height * 0.9, "оценка не обязана быть точной, но в ту сторону")
     }
+
+    @Test func bubblePathFollowsFrameAndRadii() {
+        let bubble = BubbleLayout(frame: CGRect(x: 100, y: 0, width: 200, height: 60),
+                                  topLeft: 12, topRight: 4, bottomLeft: 12, bottomRight: 4, meta: nil)
+        let path = MessageCellView.bubblePath(bubble)
+        #expect(path.bounds == bubble.frame, "контур точно в рамке пузыря")
+    }
+}
+
+/// Хост-стаб для прямой конфигурации MessageCellView без окна и контроллера.
+@MainActor
+private final class StubCellHost: TimelineCellHost {
+    let renderer = MessageRenderer()
+    let rowMetrics = TimelineRowMetrics(fonts: .forScale(1))
+    var quickReactions: [String] { [] }
+    func perform(_ action: TimelineAction) {}
+    func performPrepared(_ action: TimelineAction) {}
+    func image(for request: TimelineImageRequest) -> NSImage? { nil }
+    func registerImageDemand(_ request: TimelineImageRequest) {}
+    func unregisterImageDemand(_ request: TimelineImageRequest) {}
+    func requestOlderFromGapButton() {}
+    func requestNewerFromGapButton() {}
+    func bodyTextViewReceivedMouseDown(_ textView: NSTextView) {}
+    func copySelectedMessages() -> Bool { false }
+    func canCopySelectedMessages() -> Bool { false }
+    func handleReturnKey() -> Bool { false }
+    func presentActionsMenu() -> Bool { false }
+    func handleEscapeKey() -> Bool { false }
+    func forwardKeyToTable(_ event: NSEvent) {}
+    func contextMenu(for textView: NSTextView, event: NSEvent, link: URL?) -> NSMenu? { nil }
+    func contextMenu(forRowContaining view: NSView, leadingItems: [NSMenuItem]) -> NSMenu? { nil }
+    func handleSpaceKey() -> Bool { false }
+}
+
+/// Ячейка с пузырём (ADR 0041 M-5): meta-строка, gutter hover-времени,
+/// сброс при переиспользовании.
+@MainActor @Suite("Bubble cell view")
+struct BubbleCellTests {
+    private let metrics = TimelineRowMetrics(fonts: .forScale(1))
+    private let host = StubCellHost()
+
+    private func layout(for post: PostPresentation, width: CGFloat = 400) -> MessageRowLayout {
+        metrics.messageLayout(for: post, width: width, bodyHeight: 20, bodyUsedWidth: 60,
+                              renderer: host.renderer, style: .bubble)
+    }
+
+    private func makePost(own: Bool, continuation: Bool = false, last: Bool = true,
+                          edited: Bool = false) -> PostPresentation {
+        PostPresentation(
+            postID: PostID(unchecked: "p1"), pendingID: nil, channelID: CoreFixtures.channel(1).id, rootID: nil,
+            author: AuthorPresentation(userID: own ? CoreFixtures.me.id : CoreFixtures.bob.id,
+                                        displayName: own ? "Me" : "Bob", username: own ? "me" : "bob", isBot: false,
+                                        isCurrentUser: own, avatarRevision: 0),
+            createdAt: MattermostTimestamp(milliseconds: 1_700_000_000_000),
+            isContinuation: continuation,
+            body: .document(MessageDocument(blocks: [.paragraph([.text("hello")])]), isCollapsed: false),
+            isEdited: edited, isPinned: false, files: [], reactions: [], replyCount: 0, showsThreadContext: false,
+            sendState: nil, actions: .none, permalink: nil, isLastInGroup: last)
+    }
+
+    private func configureCell(_ post: PostPresentation) -> MessageCellView {
+        let cell = MessageCellView(frame: NSRect(x: 0, y: 0, width: 400, height: 200))
+        let body = host.renderer.render(post.body)
+        let item = TimelineItem(id: TimelineItemID(.post(post.postID!)), revision: 1, content: .post(post))
+        cell.configure(item: item, post: post, layout: layout(for: post), body: body, host: host)
+        return cell
+    }
+
+    @Test func metaLabelAtGroupTailWithEdited() throws {
+        let cell = configureCell(makePost(own: true, edited: true))
+        let meta = try #require(cell.bubbleMetaLabel)
+        #expect(!meta.isHidden)
+        let bubble = try #require(cell.rowLayout.bubble)
+        #expect(meta.frame == bubble.meta, "meta в рамке из layout")
+        #expect(meta.attributedText.string.contains(TimelineStrings.edited), "«(edited)» в meta")
+        #expect(meta.attributedText.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+                === TimelinePalette.bubbleOutgoingSecondary, "исходящий meta — светлый токен")
+    }
+
+    @Test func continuationHasNoMetaAndHoverTimeOnOwnSide() throws {
+        let cell = configureCell(makePost(own: true, continuation: true, last: false))
+        #expect(cell.bubbleMetaLabel?.isHidden != false, "у продолжения группы нет meta")
+        cell.setHovered(true)
+        cell.layout()
+        let label = try #require(cell.hoverTimeLabel)
+        #expect(!label.isHidden, "hover-время у строки без meta")
+        let bubble = try #require(cell.rowLayout.bubble)
+        #expect(label.frame.maxX < bubble.frame.minX, "gutter hover-времени — слева от своего пузыря")
+        // Хвост группы с meta не дублирует время в gutter.
+        let tail = configureCell(makePost(own: true, edited: true))
+        tail.setHovered(true)
+        tail.layout()
+        #expect(tail.hoverTimeLabel?.isHidden != false, "meta уже в пузыре — gutter не нужен")
+    }
+
+    @Test func incomingMetaUsesSecondaryColor() throws {
+        let cell = configureCell(makePost(own: false))
+        let meta = try #require(cell.bubbleMetaLabel)
+        #expect(meta.attributedText.attribute(.foregroundColor, at: 0, effectiveRange: nil) as? NSColor
+                === NSColor.secondaryLabelColor, "входящий meta — системный secondary")
+        #expect(!cell.nameLabel.isHidden, "имя автора над входящим пузырём")
+    }
+
+    @Test func resetClearsBubbleMetaOnReuse() throws {
+        let cell = configureCell(makePost(own: true, edited: true))
+        #expect(cell.bubbleMetaLabel != nil && !(cell.bubbleMetaLabel?.isHidden ?? true))
+        cell.resetContent()
+        #expect(cell.bubbleMetaLabel?.isHidden == true, "переиспользование прячет meta")
+    }
 }
