@@ -18,6 +18,9 @@ nonisolated public enum TimelineAction: Hashable, Sendable {
     /// Delivered after the timeline has written the URL to the general pasteboard.
     case copyLink(URL)
     case openThread(root: PostID)
+    /// Карточка «ответ на сообщение»: показать процитированный пост этого же
+    /// окна (transition внутри таймлайна, без загрузок).
+    case jumpToPost(PostID)
     case retrySend(PendingPostID)
     case discardSend(PendingPostID)
     /// The user explicitly activated a link that passed the safe-link policy. The

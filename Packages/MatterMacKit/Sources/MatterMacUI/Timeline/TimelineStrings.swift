@@ -166,6 +166,10 @@ enum TimelineStrings {
         String(localized: "Profile picture of \(name)")
     }
 
+    static func replyToAccessibility(_ context: ReplyContext) -> String {
+        String(localized: "In reply to \(context.authorName): \(context.snippet)")
+    }
+
     static func sendStateDescription(_ state: SendState) -> String {
         switch state {
         case .queued: queued

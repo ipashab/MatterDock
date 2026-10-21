@@ -23,14 +23,65 @@ struct BubbleLayoutTests {
                       body: MessageBody = .document(MessageDocument(blocks: [.paragraph([.text("hello")])]),
                                                     isCollapsed: false),
                       files: [FileInfo] = [], reactions: [ReactionGroup] = [], replyCount: Int = 0,
-                      sendState: SendState? = nil, showsThreadContext: Bool = false) -> PostPresentation {
+                      sendState: SendState? = nil, showsThreadContext: Bool = false,
+                      replyContext: ReplyContext? = nil) -> PostPresentation {
         let presentation = PostPresentation(
             postID: PostID(unchecked: "p1"), pendingID: nil, channelID: CoreFixtures.channel(1).id, rootID: nil,
             author: author(own: own), createdAt: MattermostTimestamp(milliseconds: 1_700_000_000_000),
             isContinuation: continuation, body: body, isEdited: edited, isPinned: false, files: files,
             reactions: reactions, replyCount: replyCount, showsThreadContext: showsThreadContext,
-            sendState: sendState, actions: .none, permalink: nil, isLastInGroup: last)
+            sendState: sendState, actions: .none, permalink: nil, isLastInGroup: last,
+            replyContext: replyContext)
         return presentation
+    }
+
+    @Test func replyContextCardSitsAboveBodyInsideBubble() {
+        let context = ReplyContext(postID: PostID(unchecked: "q1"), authorName: "Bob", snippet: "цитируемый обрывок")
+        let withCard = metrics.messageLayout(for: post(own: false, replyContext: context), width: 400,
+                                              bodyHeight: 20, renderer: MessageRenderer(), style: .bubble)
+        let plain = metrics.messageLayout(for: post(own: false), width: 400,
+                                          bodyHeight: 20, renderer: MessageRenderer(), style: .bubble)
+        let card = withCard.replyContext!
+        // Карточка внутри пузыря, над телом, и на всю внутреннюю ширину.
+        #expect(withCard.bubble!.frame.contains(card), "карточка внутри пузыря")
+        #expect(card.maxY <= withCard.body.minY, "карточка выше тела")
+        #expect(abs(card.width - withCard.body.width) < 1, "карточка шириной с тело")
+        let cardTop = withCard.bubble!.frame.minY + TimelineRowMetrics.BubbleMetrics.verticalTopPadding
+        #expect(abs(card.minY - cardTop) < 1, "карточка прижата к верхнему краю пузыря")
+        // Высота пузыря выросла ровно на карточку и распорку.
+        #expect(abs((withCard.bubble!.frame.height - plain.bubble!.frame.height)
+                    - (metrics.replyContextHeight + 4)) < 1, "пузырь выше на карточку")
+        // Без карточки фрейма нет и тело на прежнем месте.
+        #expect(plain.replyContext == nil)
+        #expect(abs(plain.body.minY - withCard.body.minY) > metrics.replyContextHeight,
+                "тело опущено вниз на высоту карточки")
+    }
+
+    @Test func replyContextHugKeepsBubbleWideEnoughForCard() {
+        let context = ReplyContext(postID: PostID(unchecked: "q1"), authorName: "Bob",
+                                   snippet: "очень длинный цитируемый обрывок на две строки точно не влезет")
+        let narrow = metrics.messageLayout(for: post(own: true, replyContext: context), width: 400,
+                                            bodyHeight: 20, bodyUsedWidth: 30,
+                                            renderer: MessageRenderer(), style: .bubble)
+        #expect(narrow.replyContext != nil)
+        #expect(abs(narrow.replyContext!.width - narrow.body.width) < 1)
+        let innerMax = metrics.bubbleInnerWidth(for: post(own: true, replyContext: context), layoutWidth: 400)
+        let expected = min(metrics.replyContextCardWidth(context), innerMax)
+        #expect(narrow.body.width >= expected - 0.5,
+                "hug не сжимает пузырь уже карточки")
+    }
+
+    @Test func replyContextFlatRowAddsLineAboveBody() {
+        let context = ReplyContext(postID: PostID(unchecked: "q1"), authorName: "Bob", snippet: "обрывок")
+        let flat = metrics.messageLayout(for: post(own: false, replyContext: context), width: 400,
+                                         bodyHeight: 20, renderer: MessageRenderer(), style: .flat)
+        let plain = metrics.messageLayout(for: post(own: false), width: 400,
+                                          bodyHeight: 20, renderer: MessageRenderer(), style: .flat)
+        let card = flat.replyContext!
+        #expect(card.maxY <= flat.body.minY, "в flat карточка строкой над телом")
+        #expect(abs(flat.height - plain.height) >= metrics.replyContextHeight,
+                "строка выросла на высоту карточки")
+        #expect(plain.replyContext == nil)
     }
 
     @Test func sidesAndCorners() {

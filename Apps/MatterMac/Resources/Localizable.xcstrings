@@ -8250,6 +8250,16 @@
           }
         }
       }
+    },
+    "In reply to %1$@: %2$@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В ответ на %1$@: %2$@"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

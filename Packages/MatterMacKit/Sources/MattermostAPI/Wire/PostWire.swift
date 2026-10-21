@@ -297,6 +297,8 @@ struct PostPropsWire: Decodable, Sendable {
     init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: DynamicKey.self)
         var props = PostProps()
+        var quoteRaw: String?
+        var previewRaw: String?
         for key in c.allKeys {
             switch key.stringValue {
             case "from_webhook":
@@ -305,6 +307,14 @@ struct PostPropsWire: Decodable, Sendable {
                 props.fromBot = c.lenientBool(key) ?? false
             case "override_username":
                 props.overrideUsername = c.lenientString(key, maxBytes: 256)
+            case "quote_post_id", "previewed_post":
+                // Серверное «ответить на сообщение» шлёт оба ключа с одним
+                // идентификатором; цитата живёт в пропсах, тело сообщения чистое.
+                // Порядок обхода ключей у декодера не гарантирован, поэтому
+                // запоминаем оба и выбираем канонический quote_post_id.
+                if let raw = c.lenientString(key, maxBytes: 64), !raw.isEmpty {
+                    if key.stringValue == "quote_post_id" { quoteRaw = raw } else { previewRaw = raw }
+                }
             case "attachments":
                 if let list = try? c.decode(LossyArray<AttachmentWire>.self, forKey: key) {
                     props.attachments = list.elements.prefix(PostDecodingLimits.maximumAttachments).map(\.attachment)
@@ -323,6 +333,9 @@ struct PostPropsWire: Decodable, Sendable {
             default:
                 continue
             }
+        }
+        if let raw = quoteRaw ?? previewRaw {
+            props.quotePostID = PostID(unchecked: raw)
         }
         self.props = props
     }

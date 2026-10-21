@@ -212,6 +212,20 @@ public struct ThreadReplyPreview: Hashable, Sendable {
     }
 }
 
+/// Карточка «ответ на сообщение» (серверное `props.quote_post_id`): автор и
+/// обрывок процитированного поста. Клик переносит к цитированной строке.
+public struct ReplyContext: Hashable, Sendable {
+    public let postID: PostID
+    public let authorName: String
+    public let snippet: String
+
+    public init(postID: PostID, authorName: String, snippet: String) {
+        self.postID = postID
+        self.authorName = authorName
+        self.snippet = snippet
+    }
+}
+
 public struct PostPresentation: Hashable, Sendable {
     /// Confirmed server post ID; `nil` while a send is pending.
     public let postID: PostID?
@@ -248,6 +262,8 @@ public struct PostPresentation: Hashable, Sendable {
     public let severity: PostSeverity?
     /// Последний ответ треда для чипа под пузырём (рендер: «N ответов · Имя: …»).
     public let threadPreview: ThreadReplyPreview?
+    /// Процитированный пост («ответ на сообщение»): карточка над телом.
+    public let replyContext: ReplyContext?
     /// Resolved custom emoji used in `body`: lowercase name → server emoji id. Names
     /// absent here render as `:name:` (unknown, not yet resolved, or disabled).
     public var customEmoji: [String: String] = [:]
@@ -258,7 +274,8 @@ public struct PostPresentation: Hashable, Sendable {
                 replyCount: Int, showsThreadContext: Bool, sendState: SendState?, actions: PostActionHints,
                 permalink: URL?, isSaved: Bool = false, editedAt: MattermostTimestamp? = nil,
                 linkPreview: LinkPreview? = nil, isLastInGroup: Bool = true,
-                severity: PostSeverity? = nil, threadPreview: ThreadReplyPreview? = nil) {
+                severity: PostSeverity? = nil, threadPreview: ThreadReplyPreview? = nil,
+                replyContext: ReplyContext? = nil) {
         self.postID = postID
         self.pendingID = pendingID
         self.channelID = channelID
@@ -282,6 +299,7 @@ public struct PostPresentation: Hashable, Sendable {
         self.linkPreview = linkPreview
         self.severity = severity
         self.threadPreview = threadPreview
+        self.replyContext = replyContext
     }
 }
 

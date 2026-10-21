@@ -455,6 +455,19 @@ extension TimelineViewController {
 
     // MARK: - Scroll requests
 
+    /// Переход к процитированному посту (карточка «ответ на сообщение»):
+    /// центрирует строку и подсвечивает её, как permalink-перелёт из поиска.
+    /// Поста в окне нет — молча ничего не делаем.
+    func reveal(post id: PostID) {
+        guard let row = rowIndex[TimelineItemID(.post(id))] else { return }
+        let visibleHeight = visibleDocumentRect.height
+        if measure(row: row) { noteHeights(IndexSet(integer: row)) }
+        let height = rowHeights[row]
+        let offset = height >= visibleHeight ? 0 : -floor((visibleHeight - height) / 2)
+        settle(.anchor(ScrollAnchor(itemID: items[row].id, offset: offset, fallbacks: [])))
+        flash(TimelineItemID(.post(id)))
+    }
+
     /// Target for this snapshot's scroll request, if it has not been honored yet.
     func scrollTarget(for snapshot: TimelineSnapshot) -> PositionTarget? {
         guard let request = snapshot.scrollRequest, lastScrollRequestGeneration != snapshot.generation else { return nil }

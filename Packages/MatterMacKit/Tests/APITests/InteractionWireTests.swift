@@ -78,6 +78,20 @@ struct InteractionWireTests {
         #expect(preview.image == nil)
     }
 
+    @Test func quotePropsDecodeFromBothServerAliases() throws {
+        let both = try post(#","props":{"quote_post_id":"q1xxxxxxxxxxxxxxxxxxxxxxxx","previewed_post":"q1xxxxxxxxxxxxxxxxxxxxxxxx"}"#)
+        #expect(both.props.quotePostID == PostID(unchecked: "q1xxxxxxxxxxxxxxxxxxxxxxxx"))
+        let previewOnly = try post(#","props":{"previewed_post":"q2xxxxxxxxxxxxxxxxxxxxxxxx"}"#)
+        #expect(previewOnly.props.quotePostID == PostID(unchecked: "q2xxxxxxxxxxxxxxxxxxxxxxxx"))
+        let none = try post(#","props":{"from_bot":true}"#)
+        #expect(none.props.quotePostID == nil)
+        let empty = try post(#","props":{"previewed_post":""}"#)
+        #expect(empty.props.quotePostID == nil, "an empty id is not a quote")
+        let firstWins = try post(#","props":{"previewed_post":"qaxxxxxxxxxxxxxxxxxxxxxxxx","quote_post_id":"qbxxxxxxxxxxxxxxxxxxxxxxxx"}"#)
+        #expect(firstWins.props.quotePostID == PostID(unchecked: "qbxxxxxxxxxxxxxxxxxxxxxxxx"),
+                "quote_post_id is the primary key")
+    }
+
     @Test func decodesChannelUnreadState() throws {
         let json = #"""
             {"team_id":"t1xxxxxxxxxxxxxxxxxxxxxxxx","user_id":"u1xxxxxxxxxxxxxxxxxxxxxxxx","channel_id":"c1xxxxxxxxxxxxxxxxxxxxxxxx",

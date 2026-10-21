@@ -51,6 +51,8 @@ struct MessageRowLayout: Equatable {
     var height: CGFloat = 0
     var avatar: CGRect?
     var threadContext: CGRect?
+    /// Карточка «ответ на сообщение» (props.quote_post_id): полоса + автор + обрывок.
+    var replyContext: CGRect?
     var header: CGRect?
     var body: CGRect = .zero
     var showMore: CGRect?
@@ -160,6 +162,17 @@ struct TimelineRowMetrics {
         return NSAttributedString(string: title, attributes: [.font: fonts.metaBold])
     }
 
+    /// Ширина карточки «ответ на сообщение» во внутреннем пространстве пузыря:
+    /// полоса (3 pt) + отступ (7 pt) + самая длинная из двух строк.
+    func replyContextCardWidth(_ context: ReplyContext) -> CGFloat {
+        let author = NSAttributedString(string: context.authorName, attributes: [.font: fonts.metaBold])
+        let snippet = NSAttributedString(string: context.snippet, attributes: [.font: fonts.meta])
+        return max(DrawnText.width(of: author), DrawnText.width(of: snippet)) + 10
+    }
+
+    /// Высота карточки: две строки meta и распорка между ними.
+    var replyContextHeight: CGFloat { fonts.metaLineHeight * 2 + 4 }
+
     static func contentWidth(forLayoutWidth width: CGFloat) -> CGFloat {
         max(minimumContentWidth, width - contentLeading - horizontalInset)
     }
@@ -267,6 +280,10 @@ struct TimelineRowMetrics {
         if exact, post.linkPreview == nil, post.files.isEmpty {
             inner = max(min(bodyUsedWidth, innerMax), Self.BubbleMetrics.minimumInnerWidth)
         }
+        // Карточка «ответ на» держит пузырь не уже себя — hug не должен обрезать её.
+        if let context = post.replyContext {
+            inner = max(inner, min(replyContextCardWidth(context), innerMax))
+        }
         let inlineMeta = exact && metaText != nil && post.linkPreview == nil && post.files.isEmpty
             && bodyUsedWidth > 0 && bodyHeight <= ceil(fonts.bodyLineHeight) + 0.5
             && bodyUsedWidth + Self.BubbleMetrics.inlineMetaGap + metaWidth <= innerMax
@@ -313,6 +330,13 @@ struct TimelineRowMetrics {
 
         let bubbleTop = y
         var innerY = bubbleTop + Self.BubbleMetrics.verticalTopPadding
+        // «Ответ на сообщение» (props.quote_post_id): полоса-карточка над телом,
+        // внутри пузыря — как у Telegram.
+        if post.replyContext != nil {
+            layout.replyContext = CGRect(x: bubbleX + padding, y: innerY, width: inner,
+                                          height: replyContextHeight)
+            innerY += replyContextHeight + 4
+        }
         layout.body = CGRect(x: bubbleX + padding, y: innerY, width: inner, height: bodyHeight)
         innerY += bodyHeight
 
@@ -490,6 +514,10 @@ struct TimelineRowMetrics {
             layout.avatar = CGRect(x: Self.horizontalInset, y: y, width: Self.avatarSize, height: Self.avatarSize)
             layout.header = CGRect(x: contentX, y: y, width: contentWidth, height: fonts.authorLineHeight)
             y += fonts.authorLineHeight + 2
+        }
+        if post.replyContext != nil {
+            layout.replyContext = CGRect(x: contentX, y: y, width: contentWidth, height: replyContextHeight)
+            y += replyContextHeight + 2
         }
         layout.body = CGRect(x: contentX, y: y, width: contentWidth, height: bodyHeight)
         y += bodyHeight

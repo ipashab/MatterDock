@@ -451,16 +451,23 @@ public struct PostProps: Hashable, Sendable, Codable {
     /// Small string context for system posts (e.g. `username`, `addedUsername`,
     /// `old_header`, `new_header`). Bounded at decode time.
     public var systemContext: [String: String]
+    /// Процитированный пост, на который отвечает это сообщение (серверное
+    /// «ответить на сообщение»: `props.quote_post_id`, дубль — `previewed_post`).
+    /// Тело сообщения цитату не содержит; без этого поля ответ неотличим
+    /// от обычной реплики.
+    public var quotePostID: PostID?
     public var hasUnsupportedContent: Bool
 
     public init(fromWebhook: Bool = false, fromBot: Bool = false, overrideUsername: String? = nil,
                 attachments: [MessageAttachment] = [], systemContext: [String: String] = [:],
+                quotePostID: PostID? = nil,
                 hasUnsupportedContent: Bool = false) {
         self.fromWebhook = fromWebhook
         self.fromBot = fromBot
         self.overrideUsername = overrideUsername
         self.attachments = attachments
         self.systemContext = systemContext
+        self.quotePostID = quotePostID
         self.hasUnsupportedContent = hasUnsupportedContent
     }
 

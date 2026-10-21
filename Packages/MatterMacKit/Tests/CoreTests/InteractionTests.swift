@@ -231,6 +231,47 @@ struct TimelineBuilderInteractionTests {
             .threadPreview?.authorName == "bob")
     }
 
+    @Test func replyContextBuiltFromQuotedPost() throws {
+        let root = CoreFixtures.post(1, channel: channel.id, user: CoreFixtures.me.id)
+        let quoted = CoreFixtures.post(2, channel: channel.id, user: CoreFixtures.bob.id)
+        var reply = CoreFixtures.post(3, channel: channel.id, user: carol.id, rootID: root.id)
+        reply.props.quotePostID = quoted.id
+        var directory = DirectoryStore(budget: .standard)
+        directory.pin(CoreFixtures.me)
+        directory.upsertUser(CoreFixtures.bob)
+        directory.upsertUser(carol)
+        let built = posts(build([root, quoted, reply], directory: directory, thread: true))
+        let row = try #require(built.first { $0.postID == reply.id })
+        let context = try #require(row.replyContext, "карточка «ответ на» из локального стора")
+        #expect(context.postID == quoted.id)
+        #expect(context.authorName == "bob")
+        #expect(context.snippet == CoreFixtures.post(2, channel: channel.id).message)
+    }
+
+    @Test func replyContextIsSilentWhenQuoteUnavailable() throws {
+        let root = CoreFixtures.post(1, channel: channel.id, user: CoreFixtures.me.id)
+        var selfQuoted = CoreFixtures.post(2, channel: channel.id, user: CoreFixtures.bob.id, rootID: root.id)
+        selfQuoted.props.quotePostID = selfQuoted.id
+        var missing = CoreFixtures.post(3, channel: channel.id, user: CoreFixtures.bob.id, rootID: root.id)
+        missing.props.quotePostID = PostID(unchecked: CoreFixtures.id("ghost", 77))
+        var gone = CoreFixtures.post(4, channel: channel.id, user: CoreFixtures.bob.id)
+        gone.deleteAt = MattermostTimestamp(milliseconds: 1)
+        var repliedToGone = CoreFixtures.post(5, channel: channel.id, user: CoreFixtures.bob.id, rootID: root.id)
+        repliedToGone.props.quotePostID = gone.id
+        let built = posts(build([root, gone, selfQuoted, missing, repliedToGone]))
+        let byID = Dictionary(uniqueKeysWithValues: built.map { ($0.postID!, $0) })
+        #expect(byID[selfQuoted.id]?.replyContext == nil, "ссылка на себя не рисуется")
+        #expect(byID[missing.id]?.replyContext == nil, "нет поста в локальном сторе — молчим")
+        #expect(byID[repliedToGone.id]?.replyContext == nil, "удалённая цитата не рисуется")
+    }
+
+    @Test func quoteSnippetStripsMarkupAndBoundsLength() {
+        let long = String(repeating: "текст ", count: 40) + "#tag"
+        #expect(TimelineBuilder.quoteSnippet(long).count == TimelineBuilder.quoteSnippetLimit)
+        #expect(!TimelineBuilder.quoteSnippet("сто*ит* _не_ **так**").contains("*"))
+        #expect(!TimelineBuilder.quoteSnippet("пере\nвод").contains("\n"))
+    }
+
     @Test func reactionGroupsNameReactorsYouFirstAndReportUnknownUsers() {
         var post = CoreFixtures.post(1, channel: channel.id)
         post.reactions = [

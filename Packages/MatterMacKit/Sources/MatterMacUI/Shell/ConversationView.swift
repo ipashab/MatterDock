@@ -380,6 +380,7 @@ final class ConversationController: NSViewController, DraftProviding, ComposerVi
     func timeline(perform action: TimelineAction) {
         switch action {
         case .reply(let id), .openThread(let id): model?.openThread(root: id)
+        case .jumpToPost(let id): timeline.reveal(post: id)
         case .openLink(let link):
             // Links into this server open inside MatterMac; everything else in the browser.
             if let model, let serverLink = MattermostLink(url: link.url, endpoint: model.session.endpoint) {

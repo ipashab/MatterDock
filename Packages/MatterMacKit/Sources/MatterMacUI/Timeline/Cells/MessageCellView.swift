@@ -109,6 +109,7 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
     let metaLabel = TimelineLabel(frame: .zero)
     let bodyTextView: MessageBodyTextView
     private var threadContextLabel: TimelineLabel?
+    private var replyContextCard: ReplyContextCardView?
     private var showMoreButton: TimelineTextButton?
     private var repliesButton: TimelineTextButton?
     private var thumbnailViews: [ImageThumbnailView] = []
@@ -220,6 +221,24 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
             label.attributedText = NSAttributedString(string: "↳ " + TimelineStrings.repliedToThread, attributes: [
                 .font: fonts.meta, .foregroundColor: NSColor.secondaryLabelColor,
             ])
+        }
+
+        if let frame = layout.replyContext, let context = post.replyContext {
+            let card = replyContextCard ?? {
+                let made = ReplyContextCardView(frame: .zero)
+                addSubview(made)
+                replyContextCard = made
+                return made
+            }()
+            card.isHidden = false
+            card.frame = frame
+            let surface: RenderSurface = layout.bubble == nil ? .plain
+                : (post.author.isCurrentUser ? .outgoing : .incoming)
+            card.configure(context: context, surface: surface, fonts: fonts)
+            card.onPress = { [weak self] in
+                guard let self, let quoted = self.post?.replyContext?.postID else { return }
+                self.host?.perform(.jumpToPost(quoted))
+            }
         }
 
         // Attachments in the render cache hold geometry only. Each displayed cell
@@ -630,6 +649,8 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
         bodyTextView.clear()
         threadContextLabel?.isHidden = true
         threadContextLabel?.attributedText = NSAttributedString()
+        replyContextCard?.resetCard()
+        replyContextCard?.isHidden = true
         for button in [showMoreButton, repliesButton, retryButton, discardButton] {
             button?.reset()
             button?.isHidden = true
@@ -674,6 +695,7 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
                                      height: fonts.metaLineHeight)
         }
         if let frame = layout.threadContext { threadContextLabel?.frame = frame }
+        if let frame = layout.replyContext { replyContextCard?.frame = frame }
         bodyTextView.frame = layout.body
         if let frame = layout.bubble?.meta { bubbleMetaLabel?.frame = frame }
         if let label = hoverTimeLabel, !label.isHidden, let fonts = host?.rowMetrics.fonts {

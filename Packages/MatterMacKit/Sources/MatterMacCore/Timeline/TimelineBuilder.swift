@@ -185,11 +185,16 @@ public enum TimelineBuilder {
                                                        snippet: threadSnippet(reply.message))
                 }
             }
+            // «Ответ на сообщение» (props.quote_post_id): карточка собирается из
+            // локального стора — процитированный пост лежит в том же окне потока.
+            // Нет стора — нет карточки: молчим, а не выдумываем контекст.
+            let replyContext = replyContext(for: post, store: store, directory: directory,
+                                             me: context.me, missing: &missing)
             var presentation = postPresentation(
                 post: post, document: stored.document, author: author, isContinuation: isContinuation,
                 showsThreadContext: showsThreadContext, expanded: window.expanded.contains(post.id),
                 context: context, isThread: isThread, directory: directory, missing: &missing,
-                isLastInGroup: isLastInGroup, threadPreview: threadPreview)
+                isLastInGroup: isLastInGroup, threadPreview: threadPreview, replyContext: replyContext)
             if context.customEmojiEnabled, let customEmoji {
                 resolveCustomEmoji(in: &presentation, post: post, candidates: stored.customEmojiCandidates,
                                    store: customEmoji, now: context.now.date, missing: &missingEmoji,
@@ -210,6 +215,7 @@ public enum TimelineBuilder {
             hasher.combine(presentation.customEmoji)
             hasher.combine(presentation.severity)
             hasher.combine(presentation.threadPreview)
+            hasher.combine(presentation.replyContext)
             items.append(TimelineItem(id: TimelineItemID(.post(post.id)), revision: UInt64(bitPattern: Int64(hasher.finalize())),
                                       content: .post(presentation)))
             previous = post
@@ -333,7 +339,8 @@ public enum TimelineBuilder {
                                  showsThreadContext: Bool, expanded: Bool, context: TimelineBuildContext,
                                  isThread: Bool, directory: DirectoryStore,
                                  missing: inout Set<UserID>, isLastInGroup: Bool = true,
-                                 threadPreview: ThreadReplyPreview? = nil) -> PostPresentation {
+                                 threadPreview: ThreadReplyPreview? = nil,
+                                 replyContext: ReplyContext? = nil) -> PostPresentation {
         let body: MessageBody
         if post.isDeleted {
             body = .deleted
@@ -372,7 +379,7 @@ public enum TimelineBuilder {
             isSaved: directory.savedPosts.contains(post.id), editedAt: post.isEdited ? post.editAt : nil,
             linkPreview: visiblePreview(post, directory: directory, context: context),
             isLastInGroup: isLastInGroup, severity: severity(of: post),
-            threadPreview: threadPreview)
+            threadPreview: threadPreview, replyContext: replyContext)
     }
 
     /// Полоса серьёзности читается из `props.severity` (warn/danger/ok) — рендер
@@ -380,6 +387,30 @@ public enum TimelineBuilder {
     static func severity(of post: Post) -> PostSeverity? {
         PostSeverity(rawValue: post.props.systemContext["severity"] ?? "")
     }
+
+    /// Карточка «ответ на сообщение» (`props.quote_post_id`). Цитата из того же
+    /// окна (тред или канал) — оживляет автора и обрывок; пост вне стора даёт
+    /// `nil`: контекст не выдумывается. Ссылки на себя не показываем.
+    static func replyContext(for post: Post, store: PostStore, directory: DirectoryStore,
+                             me: UserID, missing: inout Set<UserID>) -> ReplyContext? {
+        guard post.props.quotePostID != post.id, !post.isDeleted,
+              let quotedID = post.props.quotePostID,
+              let quoted = store.entry(quotedID)?.post, !quoted.isDeleted, !quoted.type.isSystem else {
+            return nil
+        }
+        let author = authorPresentation(quoted.userID, post: quoted, directory: directory,
+                                          me: me, missing: &missing)
+        return ReplyContext(postID: quotedID, authorName: author.displayName,
+                            snippet: quoteSnippet(quoted.message))
+    }
+
+    /// Обрывок цитаты для карточки: без разметки, до 96 символов — карточка
+    /// просторнее чипа треда (42), длинные цитаты режет уже лейбл.
+    static func quoteSnippet(_ message: String) -> String {
+        snippet(message, limit: quoteSnippetLimit)
+    }
+
+    static let quoteSnippetLimit = 96
 
     /// Последний ответ треда из локального стора канала (сбора превью чипа треда,
     /// рендер: «N ответов · Имя: обрывок…»). Ответы приходят теми же страницами
@@ -401,8 +432,13 @@ public enum TimelineBuilder {
     /// Текст обрывка последнего ответа: без разметки, до 42 символов
     /// (как в прототипе: `replace(/[*`~#]/g, '').slice(0, 42)`).
     static func threadSnippet(_ message: String) -> String {
+        snippet(message, limit: Self.threadSnippetLimit)
+    }
+
+    /// Обрывок без markdown-акцентов и переводов строк, до `limit` символов.
+    static func snippet(_ message: String, limit: Int) -> String {
         let stripped = message.filter { !"*_~#".contains($0) && !($0 == "\n") }
-        return String(stripped.prefix(Self.threadSnippetLimit))
+        return String(stripped.prefix(limit))
     }
 
     static let threadSnippetLimit = 42
