@@ -265,6 +265,37 @@ struct TimelineBuilderInteractionTests {
         #expect(byID[repliedToGone.id]?.replyContext == nil, "удалённая цитата не рисуется")
     }
 
+    @Test func replyContextUsesServerEmbedWhenQuotedAbsentFromStore() throws {
+        // Сценарий канала: цитата пришла вложенной в metadata.embeds, самого
+        // процитированного поста в загруженной странице нет — карточка всё равно есть.
+        let quotedAuthor = User(id: UserID(unchecked: CoreFixtures.id("slic", 77)), username: "slic", firstName: "Slic")
+        let quotedID = PostID(unchecked: CoreFixtures.id("gone", 77))
+        var reply = CoreFixtures.post(2, channel: channel.id, user: CoreFixtures.bob.id)
+        reply.quotedPost = QuotedPost(id: quotedID, userID: quotedAuthor.id,
+                                      message: "я кстати себе смог выбить премию")
+        var directory = DirectoryStore(budget: .standard)
+        directory.pin(CoreFixtures.me)
+        directory.upsertUser(CoreFixtures.bob)
+        directory.upsertUser(quotedAuthor)
+        let built = posts(build([CoreFixtures.post(1, channel: channel.id), reply], directory: directory))
+        let row = try #require(built.first { $0.postID == reply.id })
+        let context = try #require(row.replyContext, "вложенная цитата — карточка без поста в сторе")
+        #expect(context.postID == quotedID)
+        #expect(context.authorName == "slic")
+        #expect(context.snippet == "я кстати себе смог выбить премию")
+    }
+
+    @Test func replyContextSilentForDeletedOrSelfEmbed() throws {
+        var selfQuote = CoreFixtures.post(1, channel: channel.id, user: CoreFixtures.bob.id)
+        selfQuote.quotedPost = QuotedPost(id: selfQuote.id, userID: selfQuote.userID, message: "ээ")
+        var dead = CoreFixtures.post(2, channel: channel.id, user: CoreFixtures.bob.id)
+        dead.quotedPost = QuotedPost(id: PostID(unchecked: CoreFixtures.id("gone", 78)),
+                                     userID: CoreFixtures.bob.id, message: "мёртвая цитата", isDeleted: true)
+        let byID = Dictionary(uniqueKeysWithValues: posts(build([selfQuote, dead])).map { ($0.postID!, $0) })
+        #expect(byID[selfQuote.id]?.replyContext == nil, "ссылка на себя в эмбеде не рисуется")
+        #expect(byID[dead.id]?.replyContext == nil, "удалённая цитата в эмбеде не рисуется")
+    }
+
     @Test func quoteSnippetStripsMarkupAndBoundsLength() {
         let long = String(repeating: "текст ", count: 40) + "#tag"
         #expect(TimelineBuilder.quoteSnippet(long).count == TimelineBuilder.quoteSnippetLimit)

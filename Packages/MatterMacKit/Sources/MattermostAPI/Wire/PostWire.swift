@@ -17,6 +17,9 @@ public enum PostDecodingLimits {
     public static let maximumMiniPreviewBytes = 4 * 1_024
     /// `metadata.emojis` entries kept (custom emoji of the message and reactions).
     public static let maximumCustomEmojis = 50
+    /// Text of a quote embed kept: the card renders a 96-char snippet, the full
+    /// quoted post is never displayed.
+    public static let maximumQuotedMessageBytes = 2 * 1_024
 }
 
 /// `Post` as sent by the server. Decodes directly into the domain value; nothing else
@@ -89,6 +92,7 @@ public struct PostWire: Decodable, Sendable {
             linkPreview: props.attachments.isEmpty ? metadata?.linkPreview : nil
         )
         post.customEmojis = metadata?.emojis ?? []
+        post.quotedPost = metadata?.quotedPost
         self.post = post
         self.isEditHistoryRow = !((try? c.decodeIfPresent(String.self, forKey: .original_id)) ?? "").isEmpty
         self.messageTruncated = truncated
@@ -99,6 +103,7 @@ struct PostMetadataWire: Decodable, Sendable {
     var files: LossyArray<FileInfoWireElement>
     var reactions: LossyArray<ReactionWire>
     var linkPreview: LinkPreview?
+    var quotedPost: QuotedPost?
     var emojis: [CustomEmoji]
 
     enum Keys: String, CodingKey { case files, reactions, embeds, images, emojis }
@@ -110,10 +115,13 @@ struct PostMetadataWire: Decodable, Sendable {
         emojis = ((try? c.decodeIfPresent(LossyArray<CustomEmojiWire>.self, forKey: .emojis))?.elements ?? [])
             .prefix(PostDecodingLimits.maximumCustomEmojis).map(\.emoji)
         linkPreview = nil
+        quotedPost = nil
         // The server adds at most one link embed (for the first link). Only the first
         // few entries are examined; permalink, boards and plain link embeds are ignored.
         let embeds = (try? c.decodeIfPresent(LossyArray<EmbedWire>.self, forKey: .embeds))?.elements ?? []
-        guard let embed = embeds.prefix(4).first(where: { $0.preview != nil }), var preview = embed.preview else { return }
+        let notable = embeds.prefix(4)
+        quotedPost = notable.compactMap(\.quotedPost).first
+        guard let embed = notable.first(where: { $0.preview != nil }), var preview = embed.preview else { return }
         if var image = preview.image {
             // `metadata.images` is keyed by the exact image URL; only that one entry is read.
             if let images = try? c.nestedContainer(keyedBy: DynamicKey.self, forKey: .images),
@@ -134,15 +142,24 @@ struct PostMetadataWire: Decodable, Sendable {
     }
 }
 
-/// One `metadata.embeds` entry. `opengraph` and `image` become a `LinkPreview`.
+/// One `metadata.embeds` entry. `opengraph` and `image` become a `LinkPreview`;
+/// `quote` carries the server-embedded quoted post (Okko's reply-to-message).
 struct EmbedWire: Decodable, Sendable {
     let preview: LinkPreview?
+    let quotedPost: QuotedPost?
 
     enum Keys: String, CodingKey { case type, url, data }
 
     init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
         let type = c.lenientString(.type, maxBytes: 32) ?? ""
+        if type == "quote" {
+            // У quote-эмбеда нет `url`: цитата — вложенный пост, а не ссылка.
+            quotedPost = (try? c.decodeIfPresent(QuoteWire.self, forKey: .data))?.quotedPost
+            preview = nil
+            return
+        }
+        quotedPost = nil
         guard let raw = c.lenientString(.url, maxBytes: LinkPreview.maximumURLBytes), let link = SafeLink(raw),
               link.kind == .web else {
             preview = nil
@@ -162,6 +179,49 @@ struct EmbedWire: Decodable, Sendable {
         default:
             preview = nil
         }
+    }
+}
+
+/// `data` of a `quote` embed: the quoted post embedded by the server. Text is
+/// bounded tightly — the card shows a snippet; the full post is never needed.
+struct QuoteWire: Decodable, Sendable {
+    let quotedPost: QuotedPost?
+
+    enum Keys: String, CodingKey { case post_id, post }
+
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: Keys.self)
+        guard let postID = c.optionalID(PostID.self, .post_id),
+              let fields = try? c.decodeIfPresent(QuotedPostFieldsWire.self, forKey: .post),
+              let quoted = fields.quotedPost, quoted.id == postID else {
+            quotedPost = nil
+            return
+        }
+        quotedPost = quoted
+    }
+}
+
+/// The embedded post's fields we render: author and bounded text.
+struct QuotedPostFieldsWire: Decodable, Sendable {
+    let quotedPost: QuotedPost?
+
+    enum Keys: String, CodingKey { case id, user_id, message, type, delete_at }
+
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: Keys.self)
+        guard let id = c.optionalID(PostID.self, .id),
+              let userID = c.optionalID(UserID.self, .user_id) else {
+            quotedPost = nil
+            return
+        }
+        var message = (try? c.decodeIfPresent(String.self, forKey: .message)) ?? ""
+        if message.utf8.count > PostDecodingLimits.maximumQuotedMessageBytes {
+            message = String(decoding: message.utf8.prefix(PostDecodingLimits.maximumQuotedMessageBytes),
+                             as: UTF8.self)
+        }
+        let type = PostType(rawValue: c.lenientString(.type, maxBytes: 64) ?? "")
+        quotedPost = QuotedPost(id: id, userID: userID, message: message,
+                                isDeleted: (c.lenientInt64(.delete_at) ?? 0) != 0, isSystem: type.isSystem)
     }
 }
 

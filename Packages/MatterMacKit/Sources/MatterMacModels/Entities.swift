@@ -474,6 +474,25 @@ public struct PostProps: Hashable, Sendable, Codable {
     public static let empty = PostProps()
 }
 
+/// Пост, вложенный сервером в `metadata.embeds` (тип `quote`) как цитата
+/// сообщения-ответа. Поля ограничены при декодировании; достаточно имени
+/// автора и обрывка. Автор резолвится по `userID` через справочник.
+public struct QuotedPost: Hashable, Sendable, Codable {
+    public let id: PostID
+    public let userID: UserID
+    public let message: String
+    public let isDeleted: Bool
+    public let isSystem: Bool
+
+    public init(id: PostID, userID: UserID, message: String, isDeleted: Bool = false, isSystem: Bool = false) {
+        self.id = id
+        self.userID = userID
+        self.message = message
+        self.isDeleted = isDeleted
+        self.isSystem = isSystem
+    }
+}
+
 public struct Post: Hashable, Sendable, Identifiable, Codable {
     public let id: PostID
     public var channelID: ChannelID
@@ -499,6 +518,10 @@ public struct Post: Hashable, Sendable, Identifiable, Codable {
     public var props: PostProps
     /// Server-provided preview of the post's first link (`metadata.embeds`), if any.
     public var linkPreview: LinkPreview?
+    /// Процитированный пост, вложенный сервером в `metadata.embeds` (тип `quote`):
+    /// полный текст цитаты. Позволяет рисовать карточку «ответ на» даже когда
+    /// процитированного поста нет в загруженном окне.
+    public var quotedPost: QuotedPost?
     /// Custom emoji used by the message or its reactions (`metadata.emojis`), bounded
     /// at decode time. Saves a name lookup; empty when the server sent none.
     public var customEmojis: [CustomEmoji] = []

@@ -2582,3 +2582,26 @@ https://github.com/ipashab/MatterDock/releases/tag/v0.11.0
 Mark as Unread, permalink-карточки, post priority, insights) — выбор за
 владельцем.
 
+
+## 2026-10-22 (3) — карточки «ответ на» в канале: embed-first
+
+Репорт-2: «В треде — ответ есть, в канале чата — нет». Wire-проба поста
+«Рил?» с полным дампом `metadata` показала: сервер вкладывает процитированный
+пост целиком в `metadata.embeds[type=quote].data.post` (автор, текст,
+delete_at, team/channel display name) — официальный клиент рисует карточку из
+него. Первая реализация резолвила цитату только по локальному стору: в треде
+цитата в странице (работало), в канале — за пределами загруженной страницы
+(молчала).
+
+Фикс: `QuotedPost` (id, userID, message ≤2 KiB, isDeleted, isSystem) — вар на
+`Post` по образцу `customEmojis`. Wire: у quote-эмбеда нет `url`, ветка декода
+идёт до url-guard; сверка `post_id == post.id` против мусорных эмбедов.
+Билдер: embed — первичный источник (карточка работает везде: канал, тред,
+поиск), fallback — `props.quote_post_id` + стор без prefetch. Гварды
+сохранены: deleted/system/self-quote — `nil`. ADR 0044 переписан
+(embed-first).
+
+Верификация: `swift build` 0 warnings; новые тесты — wire (quote-эмбед без
+url, mismatch мусор, deleted+system флаги) c red-check (декод выключен —
+fail), билдер (embed без цитаты в сторе — сценарий канала; тишина на
+deleted/self-эмбедах) — зелёные; полный прогон пакета — см. запись сессии.

@@ -92,6 +92,21 @@ struct InteractionWireTests {
                 "quote_post_id is the primary key")
     }
 
+    @Test func quoteEmbedDecodesQuotedPostWithoutURL() throws {
+        let decoded = try post(#","metadata":{"embeds":[{"type":"quote","data":{"post_id":"q1xxxxxxxxxxxxxxxxxxxxxxxx","post":{"id":"q1xxxxxxxxxxxxxxxxxxxxxxxx","user_id":"u2xxxxxxxxxxxxxxxxxxxxxxxx","message":"я кстати себе смог выбить премию","type":"","delete_at":0}}}]}"#)
+        let quoted = try #require(decoded.quotedPost, "quote-эмбед без url всё равно декодируется")
+        #expect(quoted.id == PostID(unchecked: "q1xxxxxxxxxxxxxxxxxxxxxxxx"))
+        #expect(quoted.userID == UserID(unchecked: "u2xxxxxxxxxxxxxxxxxxxxxxxx"))
+        #expect(quoted.message == "я кстати себе смог выбить премию")
+        #expect(!quoted.isDeleted && !quoted.isSystem)
+        #expect(decoded.linkPreview == nil, "quote — не ссылка")
+        // Mismatch post_id ≠ post.id — мусор, не цитата; удалённая — помечается.
+        let mismatched = try post(#","metadata":{"embeds":[{"type":"quote","data":{"post_id":"q1xxxxxxxxxxxxxxxxxxxxxxxx","post":{"id":"q2xxxxxxxxxxxxxxxxxxxxxxxx","user_id":"u2xxxxxxxxxxxxxxxxxxxxxxxx","message":"х"}}}]}"#)
+        #expect(mismatched.quotedPost == nil)
+        let deleted = try post(#","metadata":{"embeds":[{"type":"quote","data":{"post_id":"q1xxxxxxxxxxxxxxxxxxxxxxxx","post":{"id":"q1xxxxxxxxxxxxxxxxxxxxxxxx","user_id":"u2xxxxxxxxxxxxxxxxxxxxxxxx","message":"х","delete_at":5,"type":"system_join_channel"}}}]}"#)
+        #expect(deleted.quotedPost?.isDeleted == true && deleted.quotedPost?.isSystem == true)
+    }
+
     @Test func decodesChannelUnreadState() throws {
         let json = #"""
             {"team_id":"t1xxxxxxxxxxxxxxxxxxxxxxxx","user_id":"u1xxxxxxxxxxxxxxxxxxxxxxxx","channel_id":"c1xxxxxxxxxxxxxxxxxxxxxxxx",

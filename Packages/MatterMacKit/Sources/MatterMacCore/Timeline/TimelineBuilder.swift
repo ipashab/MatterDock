@@ -388,12 +388,22 @@ public enum TimelineBuilder {
         PostSeverity(rawValue: post.props.systemContext["severity"] ?? "")
     }
 
-    /// Карточка «ответ на сообщение» (`props.quote_post_id`). Цитата из того же
-    /// окна (тред или канал) — оживляет автора и обрывок; пост вне стора даёт
-    /// `nil`: контекст не выдумывается. Ссылки на себя не показываем.
+    /// Карточка «ответ на сообщение». Первый источник — встроенный сервером
+    /// `metadata.embeds(quote)`: он работает и когда цитата не попала в
+    /// загруженное окно. Fallback — `props.quote_post_id` с резолвом по локальному
+    /// стору: нет поста — нет карточки, контекст не выдумывается. Ссылки на себя,
+    /// удалённые и системные цитаты не показываем.
     static func replyContext(for post: Post, store: PostStore, directory: DirectoryStore,
                              me: UserID, missing: inout Set<UserID>) -> ReplyContext? {
-        guard post.props.quotePostID != post.id, !post.isDeleted,
+        guard !post.isDeleted else { return nil }
+        if let quoted = post.quotedPost {
+            guard quoted.id != post.id, !quoted.isDeleted, !quoted.isSystem else { return nil }
+            let author = authorPresentation(quoted.userID, post: nil, directory: directory,
+                                              me: me, missing: &missing)
+            return ReplyContext(postID: quoted.id, authorName: author.displayName,
+                                snippet: quoteSnippet(quoted.message))
+        }
+        guard post.props.quotePostID != post.id,
               let quotedID = post.props.quotePostID,
               let quoted = store.entry(quotedID)?.post, !quoted.isDeleted, !quoted.type.isSystem else {
             return nil
