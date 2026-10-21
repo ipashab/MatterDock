@@ -45,6 +45,23 @@ public final class SessionViewModel {
     public var isQuickSwitcherVisible = false
     /// The followed-threads view (collapsed reply threads) in the main area.
     public var isThreadsViewVisible = false
+    /// Выбранная папка рельсы сайдбара (ADR 0043); меняет только вторую колонку.
+    public private(set) var selectedFolder: SidebarFolderID = .all
+    /// Секции второй колонки для выбранной папки.
+    public var chatListSections: [SidebarSection] {
+        sidebar?.chatSections(for: selectedFolder) ?? []
+    }
+    /// Эмодзи-иконка группы из локальных настроек (ADR 0043); nil — дефолтный глиф.
+    func groupIcon(categoryID: String) -> String? {
+        app?.environment.settings.sidebarGroupIcons[categoryID]
+    }
+
+    /// Выбор папки; отсутствующая (например, удалённая на сервере) папка — no-op.
+    func selectFolder(_ folder: SidebarFolderID) {
+        guard folder != selectedFolder, sidebar?.folderExists(folder) ?? false else { return }
+        selectedFolder = folder
+        app?.environment.settings.selectedSidebarFolder = folder.rawValue
+    }
     public private(set) var threadActivity: ThreadActivity?
     /// Browse/create channels, new direct or group message, add members.
     public var directorySheet: DirectorySheet?
@@ -79,6 +96,11 @@ public final class SessionViewModel {
     init(slot: SessionRegistry.Slot, app: AppModel) {
         self.slot = slot
         self.app = app
+        // Папка из прошлой сессии; группа могла исчезнуть на сервере — проверит
+        // applySidebar при первой публикации.
+        if let stored = SidebarFolderID(rawValue: app.environment.settings.selectedSidebarFolder) {
+            selectedFolder = stored
+        }
         subscribe()
     }
 
@@ -102,6 +124,11 @@ public final class SessionViewModel {
     func applySidebar(_ snapshot: SidebarSnapshot) async {
         guard !isDetached, !requiresAuthentication, snapshot.scope == scope else { return }
         sidebar = snapshot
+        // Группа, удалённая на сервере, снимает выбор; до загрузки категорий
+        // (usesServerCategories == false) не сбрасываем — папок ещё нет в снапшоте.
+        if case .group = selectedFolder, snapshot.usesServerCategories, !snapshot.folderExists(selectedFolder) {
+            selectedFolder = .all
+        }
         app?.updateDockBadge()
         if let selected = selectedChannel,
            !snapshot.sections.contains(where: { $0.rows.contains(where: { $0.channelID == selected }) }) {

@@ -121,14 +121,25 @@ public struct SidebarSection: Hashable, Sendable, Identifiable {
 extension SidebarSnapshot {
     /// Rows in on-screen order (keyboard navigation).
     public func visibleRows(selected: ChannelID?) -> [SidebarChannelRow] {
+        visibleRows(in: sections, selected: selected)
+    }
+
+    /// Rows of the given sections in on-screen order (a folder's filtered list).
+    public func visibleRows(in sections: [SidebarSection], selected: ChannelID?) -> [SidebarChannelRow] {
         sections.flatMap { $0.visibleRows(selected: selected) }
     }
 
     /// The channel `offset` rows away from `selected` in on-screen order, wrapping
     /// around; with `unreadOnly`, the nearest unread channel in that direction.
     public func adjacentChannel(to selected: ChannelID?, offset: Int, unreadOnly: Bool) -> ChannelID? {
+        adjacentChannel(in: sections, to: selected, offset: offset, unreadOnly: unreadOnly)
+    }
+
+    /// Same, within one folder's sections (folders rail, ADR 0043).
+    public func adjacentChannel(in sections: [SidebarSection], to selected: ChannelID?, offset: Int,
+                                unreadOnly: Bool) -> ChannelID? {
         var seen = Set<ChannelID>()
-        let rows = visibleRows(selected: selected).filter { seen.insert($0.channelID).inserted }
+        let rows = visibleRows(in: sections, selected: selected).filter { seen.insert($0.channelID).inserted }
         guard !rows.isEmpty, offset != 0 else { return nil }
         let step = offset > 0 ? 1 : -1
         let start = rows.firstIndex { $0.channelID == selected } ?? (step > 0 ? -1 : rows.count)
@@ -187,13 +198,19 @@ public struct SidebarSnapshot: Sendable {
     public let myPictureRevision: Int64
     /// The channel that was open when this account's cache was written, until a
     /// channel is opened: the window reopens where the user left off.
+    /// The channel that was open when this account's cache was written, until a
+    /// channel is opened: the window reopens where the user left off.
     public let restoredChannel: ChannelID?
+    /// Папки рельсы сайдбара (ADR 0043): встроенные + пользовательские группы,
+    /// в фиксированном порядке. Собираются из уже готовых секций — нового I/O нет.
+    public let folders: [SidebarFolderItem]
 
     public init(scope: AccountScope, generation: UInt64, teams: [TeamSummary], selectedTeam: TeamID?,
                 sections: [SidebarSection], isTruncated: Bool, myStatus: PresenceStatus? = nil,
                 myCustomStatus: CustomStatus? = nil, usesServerCategories: Bool = false, groupsUnreads: Bool = false,
                 directMessageMentions: Int = 0, canBrowseArchivedChannels: Bool = false, myPictureRevision: Int64 = 0,
-                restoredChannel: ChannelID? = nil) {
+                restoredChannel: ChannelID? = nil, folders: [SidebarFolderItem] = []) {
+        self.folders = folders
         self.restoredChannel = restoredChannel
         self.myPictureRevision = myPictureRevision
         self.usesServerCategories = usesServerCategories

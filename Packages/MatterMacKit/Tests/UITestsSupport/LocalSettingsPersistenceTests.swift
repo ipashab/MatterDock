@@ -75,6 +75,9 @@ struct LocalSettingsPersistenceTests {
         first.checksForUpdates = false
         first.updateChannel = .nightly
         first.theme = .preset(.dusk)
+        // ADR 0043: выбранная папка рельсы и иконки групп тоже сохраняются.
+        first.selectedSidebarFolder = "unread"
+        first.sidebarGroupIcons = ["custom_abc": "tada"]
         #expect(storage.values["MatterMac.notificationsEnabled"] as? Bool == false)
         #expect(storage.values["MatterMac.textSize"] as? String == "extraLarge")
         #expect(storage.values["MatterMac.bubbleTimeline"] as? Bool == true)
@@ -94,6 +97,8 @@ struct LocalSettingsPersistenceTests {
         #expect(restored.appearance == .dark && restored.language == .russian)
         #expect(!restored.checksForUpdates && restored.updateChannel == .nightly)
         #expect(restored.theme == .preset(.dusk))
+        #expect(restored.selectedSidebarFolder == "unread")
+        #expect(restored.sidebarGroupIcons == ["custom_abc": "tada"])
         // The saved appearance is applied at launch, not only on change.
         #expect(NSApplication.shared.appearance?.name == .darkAqua)
         #expect(environment(storage).sendBehavior == .commandReturnSends)
@@ -112,6 +117,9 @@ struct LocalSettingsPersistenceTests {
             "MatterMac.textSize": true,
             "MatterMac.appearance": String(repeating: "dark", count: 40),
             "MatterMac.theme": Data(#"{"version":1,"kind":"preset","preset":"neon"}"#.utf8),
+            // ADR 0043: нестроковая папка и не-JSON карта — дефолт «все» и пустая карта.
+            "MatterMac.selectedSidebarFolder": 123,
+            "MatterMac.sidebarGroupIcons": "not-json",
         ])
         let settings = LocalSettings(storage: storage)
         #expect(settings.notificationsEnabled && settings.showMessagePreview)
@@ -119,6 +127,7 @@ struct LocalSettingsPersistenceTests {
         #expect(settings.soundName == SystemSounds.defaultName)
         #expect(settings.sendBehavior == .returnSends && settings.textSize == .standard && settings.appearance == .system)
         #expect(settings.theme == .system)
+        #expect(settings.selectedSidebarFolder == "all" && settings.sidebarGroupIcons.isEmpty)
         // Строка вместо Bool — только настоящий Bool в расчёт (дефолт — включено, ADR 0042).
         #expect(settings.bubbleTimeline)
         #expect(settings.largeChatList)

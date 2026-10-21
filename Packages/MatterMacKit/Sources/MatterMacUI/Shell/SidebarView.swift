@@ -14,6 +14,7 @@ struct SidebarView: View {
             if WorkspaceRail.isShown(app: app, sidebar: session.sidebar) {
                 WorkspaceRail(app: app, session: session)
             }
+            FolderRail(session: session)
             VStack(spacing: 0) {
                 channelList
                     .overlay(alignment: .bottom) {
@@ -32,20 +33,19 @@ struct SidebarView: View {
             // rail out of the column.
             .frame(minWidth: 0, maxWidth: .infinity)
             .overlay {
-                if WorkspaceRail.isShown(app: app, sidebar: session.sidebar) {
-                    GeometryReader { geometry in
-                        Path { path in
-                            path.move(to: CGPoint(x: 0.5, y: geometry.size.height))
-                            path.addLine(to: CGPoint(x: 0.5, y: 16))
-                            path.addQuadCurve(to: CGPoint(x: 16, y: 0.5),
-                                              control: CGPoint(x: 0.5, y: 0.5))
-                            path.addLine(to: CGPoint(x: geometry.size.width, y: 0.5))
-                        }
-                        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+                // Рельса папок видна всегда — разделитель колонки тоже.
+                GeometryReader { geometry in
+                    Path { path in
+                        path.move(to: CGPoint(x: 0.5, y: geometry.size.height))
+                        path.addLine(to: CGPoint(x: 0.5, y: 16))
+                        path.addQuadCurve(to: CGPoint(x: 16, y: 0.5),
+                                          control: CGPoint(x: 0.5, y: 0.5))
+                        path.addLine(to: CGPoint(x: geometry.size.width, y: 0.5))
                     }
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
+                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
                 }
+                .allowsHitTesting(false)
+                .accessibilityHidden(true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -70,7 +70,7 @@ struct SidebarView: View {
             get: { session.selectedChannel },
             set: { if let id = $0 { session.select(channel: id) } })) {
             if let sidebar = session.sidebar {
-                ForEach(sidebar.sections) { section in
+                ForEach(session.chatListSections) { section in
                     let rows = section.visibleRows(selected: session.selectedChannel)
                     if !rows.isEmpty || section.kind == .custom || section.kind == .channels || section.hiddenCount > 0 {
                         Section {
@@ -94,6 +94,9 @@ struct SidebarView: View {
                                                  })
                         }
                     }
+                }
+                if session.chatListSections.isEmpty {
+                    Text("No chats in this folder").foregroundStyle(.secondary)
                 }
                 if sidebar.isTruncated {
                     Button("More channels…") { session.isQuickSwitcherVisible = true }

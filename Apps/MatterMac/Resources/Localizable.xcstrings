@@ -1301,7 +1301,7 @@
         }
       }
     },
-    "About MatterMac": {
+    "About MatterDock": {
       "localizations": {
         "ru": {
           "stringUnit": {
@@ -1311,7 +1311,7 @@
         }
       }
     },
-    "About MatterDock": {
+    "About MatterMac": {
       "localizations": {
         "ru": {
           "stringUnit": {
@@ -1521,6 +1521,16 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "All": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Все"
           }
         }
       }
@@ -1911,6 +1921,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Каналы"
+          }
+        }
+      }
+    },
+    "Chat folders": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Папки чатов"
+          }
+        }
+      }
+    },
+    "Chat list with avatars, timestamps and last-message previews; off — the compact one-line list.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Список чатов с аватарами, временем и превью последнего сообщения; выключено — компактный однострочный список."
           }
         }
       }
@@ -3311,6 +3341,16 @@
         }
       }
     },
+    "Large chat rows": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Крупные строки чатов"
+          }
+        }
+      }
+    },
     "Leave %@?": {
       "localizations": {
         "ru": {
@@ -3500,6 +3540,10 @@
           }
         }
       }
+    },
+    "MatterDock": {
+      "comment": "Main window title and its Window menu item. Product name; not translated.",
+      "shouldTranslate": false
     },
     "MatterMac": {
       "localizations": {
@@ -3725,6 +3769,16 @@
         }
       }
     },
+    "Message bubbles": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Пузыри сообщений"
+          }
+        }
+      }
+    },
     "Message density": {
       "localizations": {
         "ru": {
@@ -3761,6 +3815,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Сообщения"
+          }
+        }
+      }
+    },
+    "Messages in Telegram-style bubbles; the classic flat layout is restored by turning this off.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сообщения в пузырях в стиле Telegram; выключите — вернётся классическая плоская лента."
           }
         }
       }
@@ -4069,6 +4133,16 @@
         }
       }
     },
+    "No chats in this folder": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В этой папке нет чатов"
+          }
+        }
+      }
+    },
     "No conversations found. Try another channel or person.": {
       "localizations": {
         "ru": {
@@ -4105,6 +4179,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Нет подходящих людей."
+          }
+        }
+      }
+    },
+    "No messages yet": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сообщений пока нет"
           }
         }
       }
@@ -4248,10 +4332,6 @@
           }
         }
       }
-    },
-    "MatterDock": {
-      "comment": "Main window title and its Window menu item. Product name; not translated.",
-      "shouldTranslate": false
     },
     "On This Mac": {
       "localizations": {

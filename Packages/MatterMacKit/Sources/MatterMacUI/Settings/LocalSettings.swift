@@ -73,6 +73,13 @@ public final class LocalSettings {
         case updateChannel = "MatterMac.updateChannel"
         /// Versioned JSON `Data` (`AppTheme`), at most `AppTheme.maximumStoredBytes`.
         case theme = "MatterMac.theme"
+        /// Выбранная папка рельсы сайдбара (ADR 0043): `SidebarFolderID.rawValue`,
+        /// одна на приложение (не по аккаунту — идентификаторы аккаунтов здесь
+        /// не хранятся).
+        case selectedSidebarFolder = "MatterMac.selectedSidebarFolder"
+        /// JSON `Data` `[categoryID: emojiName]` — иконки пользовательских групп
+        /// (ADR 0043); не больше 100 записей, строки до 64 байт.
+        case sidebarGroupIcons = "MatterMac.sidebarGroupIcons"
     }
 
     /// Window theme (Settings › Appearance). Applies live to every window; invalid
@@ -149,6 +156,24 @@ public final class LocalSettings {
         didSet { if let updateChannel { save(.updateChannel, updateChannel.rawValue) } }
     }
 
+    /// Выбранная папка рельсы сайдбара, `SidebarFolderID.rawValue` (ADR 0043).
+    /// Неизвестное значение при загрузке становится «все».
+    public var selectedSidebarFolder: String = "all" {
+        didSet {
+            guard oldValue != selectedSidebarFolder, isLoaded else { return }
+            storage?.set(selectedSidebarFolder, forKey: Key.selectedSidebarFolder.rawValue)
+        }
+    }
+
+    /// Иконки пользовательских групп: `categoryID → emojiName` (ADR 0043).
+    public var sidebarGroupIcons: [String: String] = [:] {
+        didSet {
+            guard oldValue != sidebarGroupIcons, isLoaded,
+                  let data = try? JSONEncoder().encode(sidebarGroupIcons) else { return }
+            storage?.set(data, forKey: Key.sidebarGroupIcons.rawValue)
+        }
+    }
+
     @ObservationIgnored private let storage: (any LocalSettingsStorage)?
     /// Set after loading so restoring values does not write them straight back.
     @ObservationIgnored private var isLoaded = false
@@ -172,6 +197,8 @@ public final class LocalSettings {
             checksForUpdates = read.bool(.checksForUpdates) ?? checksForUpdates
             updateChannel = read.value(.updateChannel)
             theme = read.data(.theme).flatMap(AppTheme.init(storageData:)) ?? theme
+            selectedSidebarFolder = read.folder(.selectedSidebarFolder) ?? selectedSidebarFolder
+            sidebarGroupIcons = read.iconMap(.sidebarGroupIcons)
         }
         isLoaded = true
         if appearance != .system { applyAppearance() }
@@ -217,6 +244,26 @@ public final class LocalSettings {
 
         func data(_ key: Key) -> Data? {
             storage.object(forKey: key.rawValue) as? Data
+        }
+
+        /// Сырое значение папки: `group:<categoryID>` длиннее обычных строк (до 102
+        /// байт); корректность проверяет `SidebarFolderID(rawValue:)` в VM.
+        func folder(_ key: Key) -> String? {
+            guard let text = storage.object(forKey: key.rawValue) as? String, text.utf8.count <= 128 else { return nil }
+            return text
+        }
+
+        /// Карта иконок групп: JSON-словарь, записи длиннее 64 байт и всё сверх
+        /// 100 записей отбрасываются.
+        func iconMap(_ key: Key) -> [String: String] {
+            guard let data = data(key),
+                  let map = try? JSONDecoder().decode([String: String].self, from: data) else { return [:] }
+            let kept = map.filter { $0.key.utf8.count <= 64 && $0.value.utf8.count <= 64 }
+                .sorted { $0.key < $1.key }
+                .prefix(100)
+            var result: [String: String] = [:]
+            for pair in kept { result[pair.key] = pair.value }
+            return result
         }
 
         func value<Value: RawRepresentable<String>>(_ key: Key) -> Value? {

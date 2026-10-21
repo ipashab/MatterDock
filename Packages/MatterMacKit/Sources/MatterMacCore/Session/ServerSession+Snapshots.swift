@@ -14,10 +14,11 @@ extension ServerSession {
         // Превью последних сообщений дозаполняются понемногу при каждой публикации.
         backfillSidebarPreviews()
         let usesCategories = selectedTeam.map { directory.categories[$0]?.isEmpty == false } ?? false
+        let sections = sidebarSections(collapsedThreads: crt)
         sidebarContinuation.yield(SidebarSnapshot(scope: scope, generation: sidebarGeneration,
                                                   teams: teamSummaries(collapsedThreads: crt),
                                                   selectedTeam: selectedTeam,
-                                                  sections: sidebarSections(collapsedThreads: crt),
+                                                  sections: sections,
                                                   isTruncated: directory.channelsTruncated,
                                                   myStatus: directory.status(of: me.id),
                                                   myCustomStatus: directory.peekUser(me.id)?.customStatus,
@@ -26,7 +27,8 @@ extension ServerSession {
                                                   directMessageMentions: directMessageMentions(collapsedThreads: crt),
                                                   canBrowseArchivedChannels: directory.viewArchivedChannels,
                                                   myPictureRevision: me.lastPictureUpdate.milliseconds,
-                                                  restoredChannel: restoredChannel))
+                                                  restoredChannel: restoredChannel,
+                                                  folders: folderItems(collapsedThreads: crt, sections: sections)))
     }
 
     func sidebarRow(for channel: Channel, collapsedThreads: Bool, isFavorite: Bool = false) -> SidebarChannelRow {

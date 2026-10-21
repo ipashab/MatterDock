@@ -17,9 +17,12 @@ extension SessionViewModel {
     // MARK: - Keyboard navigation
 
     /// ⌥↑/⌥↓ (any channel) and ⌥⇧↑/⌥⇧↓ (unread channels), in sidebar order.
+    /// Navigation follows the selected folder's list (ADR 0043); with «Все» the
+    /// behavior is exactly the pre-folders one.
     public func selectAdjacentChannel(_ offset: Int, unreadOnly: Bool) {
         guard !isDetached, !requiresAuthentication,
-              let target = sidebar?.adjacentChannel(to: selectedChannel, offset: offset, unreadOnly: unreadOnly)
+              let target = sidebar?.adjacentChannel(in: chatListSections, to: selectedChannel, offset: offset,
+                                                    unreadOnly: unreadOnly)
         else { return }
         select(channel: target)
     }

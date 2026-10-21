@@ -287,6 +287,46 @@ extension ServerSession {
             + sections.map { $0.replacingRows($0.rows.filter { !isGrouped($0) }, hiddenCount: $0.hiddenCount) }
     }
 
+    /// Элементы рельсы папок (ADR 0043): «Все» → пользовательские категории в
+    /// серверном порядке → «Непрочитанные». Встроенные тред/черновики/упоминания
+    /// добавятся фазами 2–4. Бейдж группы считается по членству категории через
+    /// директорию — hoisting непрочитанных уносит строки из секции, но бейдж
+    /// группы обязан показывать её упоминания.
+    func folderItems(collapsedThreads crt: Bool, sections: [SidebarSection]) -> [SidebarFolderItem] {
+        let allRows = sections.flatMap(\.rows)
+        func counts(_ rows: [SidebarChannelRow]) -> (unread: Int, mentions: Int) {
+            (rows.filter { $0.isUnread }.count, rows.reduce(0) { $0 + $1.mentionCount })
+        }
+        var items: [SidebarFolderItem] = []
+        let all = counts(allRows)
+        items.append(SidebarFolderItem(folder: .all, kind: .all, caption: String(localized: "All"),
+                                       unreadCount: all.unread, mentionCount: all.mentions))
+        for category in selectedTeam.flatMap({ directory.categories[$0] }) ?? [] {
+            // Синтезированный `==` у Kind не виден за пределами модуля — сопоставление.
+            let isUserGroup: Bool
+            switch category.kind {
+            case .custom, .managed, .unknown: isUserGroup = true
+            case .favorites, .channels, .directMessages: isUserGroup = false
+            }
+            guard isUserGroup else { continue }
+            var unread = 0
+            var mentions = 0
+            for channel in category.channelIDs {
+                let state = directory.unread(for: channel, collapsedThreads: crt)
+                if state.isUnread { unread += 1 }
+                mentions += Int(max(0, state.mentions))
+            }
+            items.append(SidebarFolderItem(folder: .group(category.id), kind: .group,
+                                           caption: category.displayName, categoryID: category.id,
+                                           isMuted: category.isMuted, unreadCount: unread, mentionCount: mentions))
+        }
+        let unreadRows = allRows.filter { $0.isUnread || $0.mentionCount > 0 }
+        items.append(SidebarFolderItem(folder: .unread, kind: .unread, caption: String(localized: "Unreads"),
+                                       unreadCount: unreadRows.count,
+                                       mentionCount: unreadRows.reduce(0) { $0 + $1.mentionCount }))
+        return items
+    }
+
     /// Keeps the active channel in the Unreads group while it stays open.
     func updateStickyUnread(collapsedThreads crt: Bool) {
         guard directory.groupsUnreads, let active = activeChannel else {

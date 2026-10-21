@@ -173,8 +173,8 @@ struct MainWindowView: View {
         NavigationSplitView {
             SidebarView(app: app, session: session)
                 .navigationSplitViewColumnWidth(
-                    min: WorkspaceRail.isShown(app: app, sidebar: session.sidebar) ? 260 : 200,
-                    ideal: 280, max: 340)
+                    min: WorkspaceRail.isShown(app: app, sidebar: session.sidebar) ? 324 : 264,
+                    ideal: 344, max: 404)
         } detail: {
             GeometryReader { geometry in
                 ZStack(alignment: .top) {
