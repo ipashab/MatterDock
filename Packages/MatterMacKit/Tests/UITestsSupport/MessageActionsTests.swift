@@ -341,6 +341,14 @@ struct MessageActionsTests {
         #expect(plusOneText.contains(TimelineStrings.reactionRemoveHint))
         #expect(!plusOneText.contains(":+1:"), "колонки :+1: заменены на глиф эмодзи")
 
+        // Крупный эмодзи слева, как в веб-клиенте: глиф, квадрат по высоте.
+        #expect(panel.displayedGlyph == "👍")
+        #expect(panel.frame.height >= ReactionHoverPanel.emojiSize + 2 * ReactionHoverPanel.inset)
+        // Картинка кастомного эмодзи может подоспеть позже — панель её подхватывает.
+        panel.updateEmojiImage(NSImage())
+        #expect(panel.displayedImage != nil)
+        #expect(panel.displayedGlyph.isEmpty, "картинка заменила глиф")
+
         // Панель визуально под чипом и не вылезает за видимую область.
         let clip = f.controller.view.convert(f.controller.scrollView.contentView.bounds,
                                              from: f.controller.scrollView.contentView)

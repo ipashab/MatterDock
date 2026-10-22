@@ -7,9 +7,12 @@ import MatterMacCore
 /// heights строк не меняются. Внешность общая с `HoverActionBar`: Liquid Glass
 /// на macOS 26+, ниже — материал меню.
 final class ReactionHoverPanel: NSView {
-    static let maxWidth: CGFloat = 300
-    static let minWidth: CGFloat = 90
+    static let maxWidth: CGFloat = 320
+    static let minWidth: CGFloat = 120
     static let inset: CGFloat = 9
+    /// Квадрат крупного эмодзи слева от текста (как в веб-клиенте).
+    static let emojiSize: CGFloat = 40
+    static let emojiGap: CGFloat = 10
 
     /// Пост+эмодзи, для которых панель показана сейчас (повторная сборка
     /// текста под курсором не нужна).
@@ -19,6 +22,8 @@ final class ReactionHoverPanel: NSView {
     private let background: NSView
     private let content = NSView()
     private let label = NSTextField(labelWithAttributedString: NSAttributedString(string: ""))
+    private let emojiGlyph = NSTextField(labelWithString: "")
+    private let emojiImage = NSImageView()
 
     override var isFlipped: Bool { true }
 
@@ -57,6 +62,14 @@ final class ReactionHoverPanel: NSView {
         label.lineBreakMode = .byWordWrapping
         label.preferredMaxLayoutWidth = Self.maxWidth - 2 * Self.inset
         content.addSubview(label)
+        // Крупный эмодзи: глиф для системного, картинка для кастомного.
+        emojiGlyph.font = .systemFont(ofSize: Self.emojiSize * 0.78)
+        emojiGlyph.alignment = .center
+        emojiGlyph.isHidden = true
+        content.addSubview(emojiGlyph)
+        emojiImage.imageScaling = .scaleProportionallyUpOrDown
+        emojiImage.isHidden = true
+        content.addSubview(emojiImage)
         isHidden = true
         setAccessibilityElement(true)
         setAccessibilityRole(.group)
@@ -65,8 +78,10 @@ final class ReactionHoverPanel: NSView {
     @available(*, unavailable)
     required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
-    /// Первая строка — кто отреагировал, вторая — подсказка про клик.
-    func configure(item: TimelineItemID, emojiName: String, names: String, hint: String) {
+    /// Первая строка — кто отреагировал, вторая — подсказка про клик; слева —
+    /// крупный эмодзи (глиф или подоспевшая картинка кастомного).
+    func configure(item: TimelineItemID, emojiName: String, names: String, hint: String,
+                   glyph: String, image: NSImage?) {
         guard itemID != item || self.emojiName != emojiName else { return }
         itemID = item
         self.emojiName = emojiName
@@ -80,29 +95,59 @@ final class ReactionHoverPanel: NSView {
         ]))
         label.attributedStringValue = text
         setAccessibilityLabel(names + ", " + hint)
+        emojiGlyph.stringValue = glyph
+        emojiImage.image = image
+        showsImage = image != nil
+        emojiGlyph.isHidden = showsImage
+        emojiImage.isHidden = !showsImage
         needsLayout = true
     }
+
+    /// Картинка кастомного эмодзи подоспела после показа панели.
+    func updateEmojiImage(_ image: NSImage?) {
+        guard itemID != nil, let image, !showsImage else { return }
+        emojiImage.image = image
+        showsImage = true
+        emojiGlyph.isHidden = true
+        emojiImage.isHidden = false
+        needsLayout = true
+    }
+
+    private var showsImage = false
+
+    /// Только для тестов: что сейчас в квадрате крупного эмодзи.
+    var displayedGlyph: String { emojiGlyph.isHidden ? "" : emojiGlyph.stringValue }
+    var displayedImage: NSImage? { emojiImage.isHidden ? nil : emojiImage.image }
 
     func reset() {
         itemID = nil
         emojiName = nil
+        emojiGlyph.stringValue = ""
+        emojiImage.image = nil
+        showsImage = false
         isHidden = true
     }
 
     /// Размер панели под текущий текст (ширина — до `maxWidth`).
     var preferredSize: CGSize {
-        label.preferredMaxLayoutWidth = Self.maxWidth - 2 * Self.inset
+        let emojiWidth = Self.emojiSize + Self.emojiGap
+        label.preferredMaxLayoutWidth = Self.maxWidth - 2 * Self.inset - emojiWidth
         let text = label.fittingSize
-        let width = min(Self.maxWidth, max(Self.minWidth, text.width)) + 2 * Self.inset
-        return CGSize(width: width, height: text.height + 2 * Self.inset)
+        let width = min(Self.maxWidth, max(Self.minWidth, text.width + emojiWidth)) + 2 * Self.inset
+        return CGSize(width: width, height: max(text.height, Self.emojiSize) + 2 * Self.inset)
     }
 
     override func layout() {
         super.layout()
         background.frame = bounds
         content.frame = background.bounds
-        label.frame = NSRect(x: Self.inset, y: Self.inset,
-                             width: max(1, bounds.width - 2 * Self.inset),
+        let emojiFrame = NSRect(x: Self.inset, y: (bounds.height - Self.emojiSize) / 2,
+                                width: Self.emojiSize, height: Self.emojiSize)
+        emojiGlyph.frame = emojiFrame
+        emojiImage.frame = emojiFrame
+        let textX = Self.inset + Self.emojiSize + Self.emojiGap
+        label.frame = NSRect(x: textX, y: Self.inset,
+                             width: max(1, bounds.width - textX - Self.inset),
                              height: max(1, bounds.height - 2 * Self.inset))
     }
 

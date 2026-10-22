@@ -48,8 +48,10 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
 
     let catalog: EmojiCatalog
     let searchField = NSSearchField()
-    let collectionView = NSCollectionView()
+    let collectionView = EmojiGridView(frame: .zero)
     private let emptyLabel = NSTextField(labelWithString: String(localized: "No matching emoji"))
+    /// Панель превью по удержанию (для тестов).
+    let holdPreview = EmojiHoldPreview()
     private(set) var sections: [Section] = []
     private(set) var selection: IndexPath?
     /// Last VoiceOver announcement (the selected emoji's name), for tests.
@@ -119,6 +121,9 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
         root.addSubview(searchField)
         root.addSubview(scrollView)
         root.addSubview(emptyLabel)
+        collectionView.picker = self
+        holdPreview.isHidden = true
+        root.addSubview(holdPreview)
         NSLayoutConstraint.activate([
             root.widthAnchor.constraint(equalToConstant: Self.preferredSize.width),
             root.heightAnchor.constraint(equalToConstant: Self.preferredSize.height),
@@ -164,6 +169,7 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
         nextPage = 0
         hasMore = true
         loadCustomPage()
+        hideEmojiPreview()
         emptyLabel.isHidden = !sections.isEmpty
         collectionView.reloadData()
         select(sections.firstIndex { !$0.emoji.isEmpty }.map { IndexPath(item: 0, section: $0) }, announce: false)
@@ -171,6 +177,7 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
 
     override func viewDidDisappear() {
         super.viewDidDisappear()
+        hideEmojiPreview()
         customGeneration += 1
         customTask?.cancel()
         customTask = nil
@@ -271,6 +278,47 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
         onPick?(emoji.name)
     }
 
+    /// Выбор ячейки: клик мыши (через `EmojiGridView`) и Enter сходятся здесь.
+    func pick(at path: IndexPath) {
+        guard sections.indices.contains(path.section),
+              sections[path.section].emoji.indices.contains(path.item) else { return }
+        collectionView.deselectItems(at: [path])
+        selection = path
+        onPick?(sections[path.section].emoji[path.item].name)
+    }
+
+    // MARK: - Превью по удержанию
+
+    /// Крупный эмодзи над удерживаемой ячейкой (выбор при этом не совершается).
+    func showEmojiPreview(at path: IndexPath) {
+        guard sections.indices.contains(path.section),
+              sections[path.section].emoji.indices.contains(path.item),
+              let item = collectionView.item(at: path) as? EmojiPickerItem else { return }
+        holdPreviewPath = path
+        let entry = sections[path.section].emoji[path.item]
+        holdPreview.show(glyph: entry.customID == nil ? item.previewGlyph : nil,
+                         name: entry.name, image: item.previewImage)
+        let cell = collectionView.convert(item.view.frame, to: view)
+        holdPreview.frame = Self.holdPreviewFrame(cell: cell, bounds: view.bounds, side: EmojiHoldPreview.side)
+        holdPreview.isHidden = false
+    }
+
+    func hideEmojiPreview() {
+        holdPreviewPath = nil
+        holdPreview.isHidden = true
+    }
+
+    /// Ячейка, для которой сейчас превью (nil — скрыто).
+    private(set) var holdPreviewPath: IndexPath?
+
+    /// Превью над ячейкой по центру; у верхней границы — вниз, всё внутрь границ.
+    static func holdPreviewFrame(cell: NSRect, bounds: NSRect, side: CGFloat) -> NSRect {
+        let x = min(max(bounds.minX + 4, cell.midX - side / 2), max(bounds.minX + 4, bounds.maxX - side - 4))
+        var y = cell.maxY + 6
+        if y + side > bounds.maxY - 4 { y = cell.minY - side - 6 }
+        return NSRect(x: x, y: max(bounds.minY + 4, y), width: side, height: side)
+    }
+
     static func spokenName(_ emoji: Entry) -> String {
         emoji.name.replacingOccurrences(of: "_", with: " ")
     }
@@ -320,12 +368,177 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
     }
 
     func collectionView(_ collectionView: NSCollectionView, didSelectItemsAt indexPaths: Set<IndexPath>) {
-        // Only user clicks reach this delegate method.
-        collectionView.deselectItems(at: indexPaths)
+        // Клавиатурный/программный выбор; клики обрабатывает `EmojiGridView`.
         guard let path = indexPaths.first else { return }
-        selection = path
-        pickSelection()
+        collectionView.deselectItems(at: indexPaths)
+        pick(at: path)
     }
+}
+
+/// Машина жеста «нажал — держишь — отпустил» в сетке пикера: по порогу
+/// удержания показать превью; отпускание после превью НЕ выбирает эмодзи
+/// («зажали — посмотрели»); без превью выбирает, если курсор не ушёл с ячейки.
+/// Чистая логика — цикл событий в `EmojiGridView` только кормит её.
+final class EmojiHoldGesture {
+    private let threshold: TimeInterval
+    private var pressedAt: Date?
+    private var previewed = false
+    private var inside = true
+
+    init(threshold: TimeInterval) { self.threshold = threshold }
+
+    func press() {
+        pressedAt = Date()
+        previewed = false
+        inside = true
+    }
+
+    /// Наступило время превью? Однократно: true ровно один раз за нажатие.
+    func tick(now: Date = Date()) -> Bool {
+        guard let pressedAt, !previewed, now.timeIntervalSince(pressedAt) >= threshold else { return false }
+        previewed = true
+        return true
+    }
+
+    func dragged(inside: Bool) { self.inside = inside }
+
+    /// Отпускание: true — выбрать ячейку (быстрый клик по месту).
+    func release() -> Bool {
+        pressedAt = nil
+        return !previewed && inside
+    }
+}
+
+/// Сетка пикера держит нажатие сама: короткий клик выбирает эмодзи, удержание
+/// дольше `defaultHoldDelay` показывает крупный эмодзи и НЕ выбирает. Собственный
+/// цикл отслеживания нужен потому, что стандартный трекинг NSCollectionView не
+/// даёт показать превью до отпускания кнопки.
+final class EmojiGridView: NSCollectionView {
+    weak var picker: ReactionPickerViewController?
+    static let defaultHoldDelay: TimeInterval = 0.35
+    /// Порог удержания; тесты ставят 0 или большой интервал, чтобы пройти
+    /// обе ветки цикла без реальных секунд.
+    var holdDelay: TimeInterval = defaultHoldDelay
+
+    override func mouseDown(with event: NSEvent) {
+        guard let picker, let window, let path = hitPath(of: event) else {
+            super.mouseDown(with: event)
+            return
+        }
+        let gesture = EmojiHoldGesture(threshold: holdDelay)
+        gesture.press()
+        var previewed = false
+        while true {
+            if gesture.tick() {
+                picker.showEmojiPreview(at: path)
+                previewed = true
+            }
+            guard let next = window.nextEvent(matching: [.leftMouseUp, .leftMouseDragged],
+                                              until: Date().addingTimeInterval(0.02),
+                                              inMode: .default, dequeue: true) else { continue }
+            switch next.type {
+            case .leftMouseDragged:
+                gesture.dragged(inside: hitPath(of: next) == path)
+                if previewed, hitPath(of: next) != path { picker.hideEmojiPreview() }
+            case .leftMouseUp:
+                if previewed { picker.hideEmojiPreview() }
+                else if gesture.release(), hitPath(of: next) == path { picker.pick(at: path) }
+                return
+            default:
+                if previewed { picker.hideEmojiPreview() }
+                return
+            }
+        }
+    }
+
+    private func hitPath(of event: NSEvent) -> IndexPath? {
+        indexPathForItem(at: convert(event.locationInWindow, from: nil))
+    }
+}
+
+/// Крупный эмодзи по удержанию в пикере — только просмотр. Внешность общая с
+/// `ReactionHoverPanel`: Liquid Glass на macOS 26+, ниже — материал меню.
+final class EmojiHoldPreview: NSView {
+    static let side: CGFloat = 88
+    static let contentSide: CGFloat = 56
+    private static let glyphFontSize: CGFloat = 44
+    private static let nameFontSize: CGFloat = 13
+
+    private let background: NSView
+    private let content = NSView()
+    private let glyphLabel = NSTextField(labelWithString: "")
+    private let emojiView = NSImageView()
+
+    override init(frame frameRect: NSRect) {
+        if #available(macOS 26, *) {
+            let glass = NSGlassEffectView()
+            glass.cornerRadius = 12
+            background = glass
+        } else {
+            let effect = NSVisualEffectView()
+            effect.material = .menu
+            effect.blendingMode = .withinWindow
+            effect.state = .active
+            effect.wantsLayer = true
+            effect.layer?.cornerRadius = 12
+            effect.layer?.masksToBounds = true
+            background = effect
+        }
+        super.init(frame: frameRect)
+        if #available(macOS 26, *), let glass = background as? NSGlassEffectView {
+            glass.contentView = content
+        } else {
+            background.addSubview(content)
+        }
+        addSubview(background)
+        content.addSubview(glyphLabel)
+        content.addSubview(emojiView)
+        glyphLabel.alignment = .center
+        glyphLabel.font = .systemFont(ofSize: Self.glyphFontSize)
+        emojiView.imageScaling = .scaleProportionallyUpOrDown
+        glyphLabel.isHidden = true
+        emojiView.isHidden = true
+        setAccessibilityElement(false)
+        isHidden = true
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    /// Глиф — для системного эмодзи; картинка — для кастомного (если подгружена);
+    /// иначе — короткая подпись `:name:`.
+    func show(glyph: String?, name: String, image: NSImage?) {
+        if let image {
+            emojiView.image = image
+            emojiView.isHidden = false
+            glyphLabel.isHidden = true
+        } else {
+            emojiView.image = nil
+            emojiView.isHidden = true
+            let text = glyph ?? ":\(name):"
+            glyphLabel.font = .systemFont(ofSize: text.count <= 2 ? Self.glyphFontSize : Self.nameFontSize,
+                                          weight: text.count <= 2 ? .regular : .medium)
+            glyphLabel.stringValue = text
+            glyphLabel.isHidden = false
+        }
+    }
+
+    override func layout() {
+        super.layout()
+        background.frame = bounds
+        content.frame = background.bounds
+        let side = Self.contentSide
+        let origin = NSPoint(x: (bounds.width - side) / 2, y: (bounds.height - side) / 2)
+        glyphLabel.frame = NSRect(origin: origin, size: NSSize(width: side, height: side))
+        emojiView.frame = NSRect(origin: origin, size: NSSize(width: side, height: side))
+    }
+
+    /// Только для тестов: что сейчас показано в превью.
+    var displayedText: String { glyphLabel.isHidden ? "" : glyphLabel.stringValue }
+    var displayedImage: NSImage? { emojiView.isHidden ? nil : emojiView.image }
+
+    /// Нажатие держит цикл сетки; сюда клики не проваливаются.
+    override func mouseDown(with event: NSEvent) {}
 }
 
 /// One emoji cell: the glyph as a large label; VoiceOver reads the short name.
@@ -342,6 +555,10 @@ final class EmojiPickerItem: NSCollectionViewItem {
     private var imageID: String?
     /// Для тестов: картинка показана (не «точки»).
     private(set) var showsCustomImage = false
+
+    /// Контент превью по удержанию: глиф и подгруженная картинка кастомного.
+    var previewGlyph: String { glyphLabel.stringValue }
+    var previewImage: NSImage? { showsCustomImage ? customImageView.image : nil }
 
 
     override func loadView() {

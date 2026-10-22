@@ -110,6 +110,81 @@ struct ReactionPickerTests {
         #expect(picker.collectionView.selectionIndexPaths.isEmpty)
     }
 
+    /// Правила жеста удержания: превью по порогу, отпускание после превью
+    /// не выбирает, быстрый клик выбирает, дрейф наружу отменяет.
+    @Test func holdGestureRules() {
+        // Удержание дольше порога: превью показали, отпускание НЕ выбирает —
+        // «зажали — посмотрели».
+        let slow = EmojiHoldGesture(threshold: 0.35)
+        slow.press()
+        #expect(!slow.tick(now: Date(timeIntervalSinceNow: 0.1)), "рано — без превью")
+        #expect(slow.tick(now: Date(timeIntervalSinceNow: 0.4)), "порог пройден — превью")
+        #expect(!slow.tick(now: Date(timeIntervalSinceNow: 0.5)), "повторно превью не показываем")
+        slow.dragged(inside: false)
+        slow.dragged(inside: true)
+        #expect(!slow.release(), "после превью отпускание не выбирает")
+
+        // Быстрый клик без превью и без дрейфа — выбирает.
+        let quick = EmojiHoldGesture(threshold: 0.35)
+        quick.press()
+        #expect(!quick.tick(now: Date(timeIntervalSinceNow: 0.1)))
+        #expect(quick.release())
+
+        // Дрейф наружу без превью — отпускание там же не выбирает.
+        let drift = EmojiHoldGesture(threshold: 10)
+        drift.press()
+        drift.dragged(inside: false)
+        #expect(!drift.release())
+
+        // Дрейф наружу и обратно до порога, отпускание внутри — выбирает.
+        let back = EmojiHoldGesture(threshold: 0.35)
+        back.press()
+        back.dragged(inside: false)
+        back.dragged(inside: true)
+        #expect(back.tick(now: Date(timeIntervalSinceNow: 1)), "вернулись на ячейку — превью")
+        #expect(!back.release())
+    }
+
+    /// Панель превью: системный эмодзи — крупный глиф, без выбора; кастомный —
+    /// подоспевшая картинка.
+    @Test func showEmojiPreviewUsesTheCellContentWithoutPicking() throws {
+        let (picker, window, spy) = makePicker()
+        defer { window.close() }
+        let path = IndexPath(item: 1, section: 0)
+        _ = try #require(picker.collectionView.item(at: path) as? EmojiPickerItem)
+        picker.showEmojiPreview(at: path)
+        #expect(picker.holdPreviewPath == path)
+        #expect(!picker.holdPreview.isHidden)
+        #expect(!picker.holdPreview.displayedText.isEmpty)
+        #expect(picker.holdPreview.displayedImage == nil, "системный эмодзи — глиф, не картинка")
+        picker.hideEmojiPreview()
+        #expect(picker.holdPreviewPath == nil)
+        #expect(picker.holdPreview.isHidden)
+        #expect(spy.picked.isEmpty, "превью не отправляет выбор")
+    }
+
+    /// Превью стоит над ячейкой по центру, у верхней границы спускается вниз и
+    /// не выходит за края пикера.
+    @Test func holdPreviewFrameStaysInsideThePicker() {
+        let bounds = NSRect(x: 0, y: 0, width: 320, height: 400)
+        let cell = NSRect(x: 100, y: 200, width: 36, height: 36)
+        let above = ReactionPickerViewController.holdPreviewFrame(cell: cell, bounds: bounds, side: 88)
+        #expect(above.midX == cell.midX)
+        #expect(above.minY == cell.maxY + 6)
+
+        // Ячейка у верхней границы — превью вниз, внутрь границ.
+        let topCell = NSRect(x: 100, y: 350, width: 36, height: 36)
+        let top = ReactionPickerViewController.holdPreviewFrame(cell: topCell, bounds: bounds, side: 88)
+        #expect(top.maxY < bounds.maxY)
+        #expect(top.maxY < topCell.minY, "превью уходит под ячейку, а не за верх")
+
+        // Ячейка у левого края — по горизонтали клампится внутрь.
+        let left = ReactionPickerViewController.holdPreviewFrame(cell: NSRect(x: -10, y: 200, width: 36, height: 36),
+                                                                 bounds: bounds, side: 88)
+        #expect(left.minX >= 4)
+        #expect(left.minX == bounds.minX + 4)
+    }
+
     @Test func itemsExposeTheEmojiNameToVoiceOver() throws {
         let (picker, window, _) = makePicker()
         defer { window.close() }

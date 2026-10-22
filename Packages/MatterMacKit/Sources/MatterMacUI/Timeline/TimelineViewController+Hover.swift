@@ -224,12 +224,17 @@ extension TimelineViewController {
             reactionPanel.reset()
             return
         }
-        reactionPanel.configure(item: items[row].id, emojiName: hit.group.emojiName,
-                                names: TimelineStrings.reactorPanelNames(hit.group, emoji: { [renderer] in
+        let group = hit.group
+        let request = group.customEmojiID.map { TimelineImageRequest.customEmoji($0) }
+        reactionPanel.configure(item: items[row].id, emojiName: group.emojiName,
+                                names: TimelineStrings.reactorPanelNames(group, emoji: { [renderer] in
                                     renderer.emojiText(for: $0)
                                 }),
-                                hint: hit.group.includesCurrentUser ? TimelineStrings.reactionRemoveHint
-                                                                    : TimelineStrings.reactionAddHint)
+                                hint: group.includesCurrentUser ? TimelineStrings.reactionRemoveHint
+                                                                : TimelineStrings.reactionAddHint,
+                                glyph: renderer.emojiText(for: group.emojiName),
+                                image: request.flatMap { image(for: $0) })
+        reactionPanelRequest = request
         positionReactionPanel(cell: cell, chipInCell: hit.frame)
     }
 

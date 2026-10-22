@@ -104,6 +104,8 @@ public final class TimelineViewController: NSViewController {
     /// Floating actions for the hovered/selected message (see `+Hover`).
     let hoverBar = HoverActionBar(frame: .zero)
     let reactionPanel = ReactionHoverPanel(frame: .zero)
+    /// Запрос картинки кастомного эмодзи у показанной панели (обновить, когда подоспеет).
+    var reactionPanelRequest: TimelineImageRequest?
     /// Pointer location (window coordinates) while it is inside the timeline.
     var hoverPointerLocation: NSPoint?
     var hoverHighlightedID: TimelineItemID?
@@ -559,6 +561,9 @@ public final class TimelineViewController: NSViewController {
     /// Delivers a newly available image to displayed rows that asked for it.
     public func imageDidBecomeAvailable(_ request: TimelineImageRequest) {
         guard isViewLoaded, imageDemand[request] != nil else { return }
+        if reactionPanel.itemID != nil, reactionPanelRequest == request {
+            reactionPanel.updateEmojiImage(image(for: request))
+        }
         tableView.enumerateAvailableRowViews { rowView, _ in
             (rowView.view(atColumn: 0) as? MessageCellView)?.imageDidBecomeAvailable(request)
         }
