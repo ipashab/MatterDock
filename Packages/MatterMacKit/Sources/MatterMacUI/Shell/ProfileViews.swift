@@ -58,11 +58,33 @@ struct ProfileAvatar: View {
     let name: String
     let size: CGFloat
     var status: PresenceStatus?
+    /// Клик открывает картинку в вьюере на всё окно, правый клик — «Сохранить…»
+    /// (ADR 0047). Выключено там, где аватар сам по себе кнопка (строки списков).
+    var opensViewer = false
     @State private var image: NSImage?
     @State private var lease: ImagePipeline.Decoded?
     @Environment(\.displayScale) private var displayScale
 
     var body: some View {
+        let avatar = circle
+        if opensViewer {
+            avatar
+                .contentShape(Circle())
+                .onTapGesture {
+                    ProfileAvatarMedia.openViewer(session: session, userID: userID, revision: revision, name: name)
+                }
+                .contextMenu {
+                    Button("Save Avatar…") {
+                        ProfileAvatarMedia.saveAvatar(session: session, userID: userID, revision: revision, name: name)
+                    }
+                }
+                .help("Click to view the avatar")
+        } else {
+            avatar
+        }
+    }
+
+    private var circle: some View {
         ZStack(alignment: .bottomTrailing) {
             Group {
                 if let image {
@@ -97,6 +119,102 @@ struct ProfileAvatar: View {
               !Task.isCancelled, !session.isDetached else { return }
         lease = decoded
         image = NSImage(cgImage: decoded.image, size: .zero)
+    }
+}
+
+@MainActor
+enum ProfileAvatarMedia {
+    /// Вьюер крупной картинки живёт в главном окне, а карточка — в поповере:
+    /// держим контроллер здесь, иначе он (weak в overlay) умрёт сразу.
+    private static var viewer: MediaViewerController?
+    private static var panel: NSSavePanel?
+    private static var saveTask: Task<Void, Never>?
+
+    /// Показ аватара в вьюере на всё окно: та же machinery, что у картинок
+    /// вложений (базовая раскладка, зум, копирование), сохранение — PNG.
+    static func openViewer(session: SessionViewModel, userID: UserID, revision: Int64, name: String) {
+        guard !session.isDetached, let app = session.app else { return }
+        let pipeline = app.images
+        viewer?.close()
+        let info = FileInfo(id: FileID(unchecked: "avatar-" + userID.rawValue), name: avatarFileName(name),
+                           fileExtension: "png", mimeType: "image/png")
+        let controller = MediaViewerController(content: MediaViewerContent(files: [info], authorName: name))
+        controller.saveActionLabel = String(localized: "Save Avatar…")
+        controller.onSave = { [weak session] _ in
+            guard let session else { return }
+            saveAvatar(session: session, userID: userID, revision: revision, name: name,
+                       image: viewer?.lease?.image)
+        }
+        controller.onClose = { [weak controller] in
+            guard controller === viewer else { return }
+            viewer = nil
+        }
+        viewer = controller
+        let fetch: MediaViewerController.Fetch = { [weak session] _, pixels in
+            guard let session, !session.isDetached else { return nil }
+            return await session.session.profileImage(userID, revision: revision, maxPixelSize: pixels,
+                                                      pipeline: pipeline)
+        }
+        let avatarFetch: @MainActor (Int) async -> ImagePipeline.Decoded? = { [weak session] pixels in
+            guard let session, !session.isDetached else { return nil }
+            return await session.session.profileImage(userID, revision: revision, maxPixelSize: pixels,
+                                                      pipeline: pipeline)
+        }
+        controller.show(in: NSApp.keyWindow, budget: app.environment.budget, fetch: fetch, avatar: avatarFetch)
+    }
+
+    /// Только для тестов: текущий открытый вьюер.
+    static var openedViewer: MediaViewerController? { viewer }
+
+    /// Сохранение аватара: PNG-кодирование показанной картинки (если вьюер уже
+    /// держит полную), иначе — отдельная загрузка в максимальном бюджете.
+    static func saveAvatar(session: SessionViewModel, userID: UserID, revision: Int64, name: String,
+                           image: CGImage? = nil) {
+        guard !session.isDetached, let app = session.app,
+              let window = NSApp.keyWindow, panel == nil else { return }
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = avatarFileName(name)
+        panel.prompt = "Save Avatar"
+        self.panel = panel
+        panel.beginSheetModal(for: window) { response in
+            self.panel = nil
+            guard response == .OK, let destination = panel.url, !session.isDetached else { return }
+            saveTask?.cancel()
+            saveTask = Task {
+                var cg = image
+                if cg == nil {
+                    cg = await session.session.profileImage(userID, revision: revision,
+                                                            maxPixelSize: app.environment.budget.maximumImagePixelDimension,
+                                                            pipeline: app.images)?.image
+                }
+                guard !Task.isCancelled, let cg else {
+                    if !Task.isCancelled { session.inlineError = UserFacingErrorText.describe(.fileUnavailable) }
+                    return
+                }
+                do {
+                    try Self.pngData(from: cg).write(to: destination)
+                } catch {
+                    session.inlineError = UserFacingErrorText.describe(.fileUnavailable)
+                }
+            }
+        }
+    }
+
+    private static func pngData(from image: CGImage) throws -> Data {
+        let rep = NSBitmapImageRep(cgImage: image)
+        guard let data = rep.representation(using: .png, properties: [:]) else { throw CocoaError(.fileWriteUnknown) }
+        return data
+    }
+
+    /// Имя файла: имя человека без управляющих символов, разделителей путей
+    /// и двоеточий; слова через дефис.
+    static func avatarFileName(_ name: String) -> String {
+        let clean = name.unicodeScalars
+            .filter { !CharacterSet(charactersIn: "/\\:").contains($0) && !CharacterSet.controlCharacters.contains($0) }
+            .map(String.init).joined()
+        let words = clean.split(whereSeparator: \.isWhitespace)
+        let base = words.isEmpty ? "avatar" : words.joined(separator: "-")
+        return base.lowercased() + ".png"
     }
 }
 
@@ -148,7 +266,7 @@ struct UserProfileCard: View {
         return VStack(alignment: .leading, spacing: 12) {
             HStack(alignment: .center, spacing: 12) {
                 ProfileAvatar(session: session, userID: user.id, revision: user.lastPictureUpdate.milliseconds,
-                              name: profile.displayName, size: 56, status: profile.status)
+                              name: profile.displayName, size: 56, status: profile.status, opensViewer: true)
                 VStack(alignment: .leading, spacing: 3) {
                     Text(profile.displayName)
                         .font(.title3.weight(.semibold))

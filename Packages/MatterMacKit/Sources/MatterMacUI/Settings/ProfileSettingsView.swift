@@ -27,7 +27,7 @@ struct ProfileSettingsView: View {
                                 .frame(width: 64, height: 64).clipShape(Circle())
                         } else {
                             ProfileAvatar(session: session, userID: user.id, revision: user.lastPictureUpdate.milliseconds,
-                                          name: user.username, size: 64)
+                                          name: user.username, size: 64, opensViewer: true)
                         }
                         Button("Choose Picture…", action: choosePicture)
                         if let picture {

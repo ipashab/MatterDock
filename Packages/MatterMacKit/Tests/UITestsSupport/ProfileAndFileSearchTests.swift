@@ -70,6 +70,34 @@ struct ProfileAndFileSearchTests {
         }
         #expect(window.attachedSheet == nil)
     }
+    /// Аватар профиля открывается в вьюере: грузится та же картинка через
+    /// пайплайн, лиз удерживается, закрытие отпускает (ADR 0047).
+    @Test func avatarViewerLoadsAndReleasesTheProfilePicture() async throws {
+        let h = try await SettingsAndAttentionTests.Harness()
+        MediaViewerController.isPresentationSuppressedForTesting = true
+        defer { MediaViewerController.isPresentationSuppressedForTesting = false }
+        let png = CoreFixtures.png(width: 32, height: 32)
+        h.service.withState { $0.imageHandler = { _, _ in png } }
+        ProfileAvatarMedia.openViewer(session: h.model, userID: CoreFixtures.bob.id, revision: 3,
+                                     name: "Bob Hoffman")
+        let viewer = try #require(ProfileAvatarMedia.openedViewer)
+        #expect(viewer.content.authorName == "Bob Hoffman")
+        #expect(viewer.content.files[0].name == "bob-hoffman.png")
+        for _ in 0..<100 {
+            if viewer.lease != nil { break }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        #expect(viewer.lease != nil)
+        viewer.close()
+        #expect(viewer.lease == nil)
+        #expect(ProfileAvatarMedia.openedViewer == nil)
+        // Имя файла чистит разделители путей, двоеточия и лишние пробелы.
+        #expect(ProfileAvatarMedia.avatarFileName("Bob / The:Builder") == "bob-thebuilder.png")
+        #expect(ProfileAvatarMedia.avatarFileName("Anna  Clark") == "anna-clark.png")
+        #expect(ProfileAvatarMedia.avatarFileName("  ") == "avatar.png")
+        await h.close()
+    }
+
     @Test func removingFileClosesRetainedViewerAndReleasesDisplayedImage() async throws {
         let h = try await SettingsAndAttentionTests.Harness()
         MediaViewerController.isPresentationSuppressedForTesting = true

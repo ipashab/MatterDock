@@ -544,7 +544,7 @@ private struct ChannelInfoIcon: View {
         ZStack(alignment: .bottomTrailing) {
             if details.type == .direct, let user = details.directPartner {
                 ProfileAvatar(session: session, userID: user, revision: partner?.partnerAvatarRevision ?? 0,
-                              name: details.displayName, size: size, status: partner?.partnerStatus)
+                              name: details.displayName, size: size, status: partner?.partnerStatus, opensViewer: true)
             } else {
                 RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
                     .fill(tint.gradient)
@@ -593,7 +593,7 @@ private struct MemberRow: View {
     var body: some View {
         HStack(spacing: 10) {
             ProfileAvatar(session: session, userID: member.userID, revision: member.avatarRevision,
-                          name: member.displayName, size: 28, status: member.status)
+                          name: member.displayName, size: 28, status: member.status, opensViewer: true)
             VStack(alignment: .leading, spacing: 1) {
                 Text(member.displayName).lineLimit(1)
                 if member.displayName != member.username {

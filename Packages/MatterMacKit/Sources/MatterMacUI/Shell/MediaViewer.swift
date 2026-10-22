@@ -63,6 +63,15 @@ final class MediaViewerController {
     var onClose: (() -> Void)?
     /// An image already leased elsewhere (the timeline thumbnail), shown while loading.
     var placeholder: ((FileInfo) -> ImagePipeline.Decoded?)?
+    /// Подпись кнопки сохранения (a11y и подсказка). По умолчанию — «вложение»;
+    /// для другого содержимого (аватар) задать до `show`.
+    var saveActionLabel: String? {
+        didSet {
+            guard let saveActionLabel else { return }
+            saveButton.setAccessibilityLabel(saveActionLabel)
+            saveButton.toolTip = saveActionLabel
+        }
+    }
 
     /// Tests keep the viewer out of the window (it is still created, loaded and closed).
     static var isPresentationSuppressedForTesting = false

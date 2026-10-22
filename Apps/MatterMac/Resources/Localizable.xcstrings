@@ -8334,6 +8334,36 @@
           }
         }
       }
+    },
+    "Save Avatar…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить аватар…"
+          }
+        }
+      }
+    },
+    "Save Avatar": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить аватар"
+          }
+        }
+      }
+    },
+    "Click to view the avatar": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нажмите, чтобы открыть аватар"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
