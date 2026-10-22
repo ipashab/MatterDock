@@ -2843,3 +2843,27 @@ Debug-сборка приложения `** BUILD SUCCEEDED **` (подпись 
 `Shared.xcconfig`, Release, DMG/ZIP, ручная QA (hover, зажатие в пикере,
 тулбар, Send later живьём, тред в диалоге), затем progress.md + docs-коммит;
 пуш и `gh release create` — только по явной просьбе.
+
+## 2026-10-22 (10) — фантомная подписка на треды: read-метка = follow на сервере
+
+Продолжение репорта G. Пользователь уточнил: тред «отслеживается», хотя он не
+подписывался. Проверка исходников mattermost-server v7.8.0 подтвердила:
+`UpdateThreadReadForUser` (per-thread read-метка) вызывает
+`ThreadStore.MaintainMembership` с `{Following: true, UpdateFollowing: true}` —
+создаёт отсутствующее членство сразу с подпиской и форсирует Following=true при
+существующем; Unfollow в 7.8 строку удаляет, так что метка «воскрешает»
+подписку. Наша авто-метка (`evaluateThreadReadState`, панель треда на живом
+крае ≥600 мс) отправляла метку без проверки членства — клик по «N ответов»
+подписывал навсегда. Веб-клиент обходит через guard `if (userThread)` в
+`thread_viewer.tsx markThreadRead()`.
+
+Фикс (ADR 0054): перед меткой — GET членства (404 → nil); метка только при
+существующем членстве, иначе позиция фиксируется локально, серверу не
+отправляется ничего. Командная `markThreadRead(nil)` безопасна
+(`MarkAllAsReadByTeam` — чистый UPDATE), не тронута.
+
+Тесты: обновлены позитивные (`visibleThreadAtLiveEdgeIsMarkedReadOnce`,
+`replyArrivingDuringReadRequestGetsASecondReadMark` — теперь с членством),
+новый `threadWithoutMembershipIsNeitherMarkedReadNorFollowed`. Прогон:
+12 тестов обеих суит зелёные, полный прогон пакета 623 теста зелёные,
+0 warnings. Коммит локальный, без пуша.
