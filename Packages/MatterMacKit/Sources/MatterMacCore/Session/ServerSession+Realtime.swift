@@ -208,10 +208,13 @@ extension ServerSession {
             if isRoot { channel.totalMessageCountRoot += 1; channel.lastRootPostAt = max(channel.lastRootPostAt, post.createAt) }
             channel.lastPostAt = max(channel.lastPostAt, post.createAt)
         }
-        // Превью строки сайдбара — из самого свежего поста канала.
-        channelPreviews[channelID] = sidebarPreview(of: post)
-        channelPreviewStamp[channelID] = post.id
-        sidebarPreviewFetched.insert(channelID)
+        // Превью строки сайдбара — последнее сообщение самого канала, то есть
+        // корень: ответ в треде не всплывает в список чатов.
+        if isRoot {
+            channelPreviews[channelID] = sidebarPreview(of: post)
+            channelPreviewStamp[channelID] = post.id
+            sidebarPreviewFetched.insert(channelID)
+        }
         if post.userID == me.id {
             // Own posts never count as unread.
             let total = directory.channels[channelID]

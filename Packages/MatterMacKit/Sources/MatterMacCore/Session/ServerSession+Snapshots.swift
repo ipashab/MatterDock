@@ -1,5 +1,6 @@
 import Foundation
 import MatterMacModels
+import MattermostAPI
 
 extension ServerSession {
     /// Visible DMs/GMs in the sidebar (server default `limit_visible_dms_gms` is 40);
@@ -81,6 +82,29 @@ extension ServerSession {
 
     static let sidebarPreviewLimit = 90
 
+    /// Сколько постов читает одна страница превью и сколько страниц максимум:
+    /// превью — косметика, ради неё не разгоняем запросы.
+    public static let sidebarPreviewPageSize = 60
+    public static let sidebarPreviewPageLimit = 2
+
+    /// Последний **корневой** пост канала — то, что показывается как последнее
+    /// сообщение под названием чата. Ответы треда отдаются вперемешку с корнями
+    /// (проверено probe: `collapsed_threads` на этом сервере порядок не меняет),
+    /// поэтому ищем первый корень от свежих постов назад, страницами.
+    func latestRootPost(in channel: ChannelID) async throws(APIError) -> Post? {
+        var cursor: PostID?
+        for _ in 0..<Self.sidebarPreviewPageLimit {
+            let page = try await service.posts(channel: channel,
+                query: cursor.map { .before($0, perPage: Self.sidebarPreviewPageSize) }
+                    ?? .latest(perPage: Self.sidebarPreviewPageSize),
+                collapsedThreads: false, priority: .background)
+            if let root = page.posts.first(where: { $0.rootID == nil }) { return root }
+            guard page.posts.count == Self.sidebarPreviewPageSize, let oldest = page.posts.last else { return nil }
+            cursor = oldest.id
+        }
+        return nil
+    }
+
     /// Дозаполняет превью для свежих видимых каналов одним постом на канал;
     /// каждый канал запрашивается не больше одного раза за сессию.
     func backfillSidebarPreviews(limit: Int = 4) {
@@ -99,11 +123,13 @@ extension ServerSession {
                     return
                 }
                 do {
-                    let page = try await session.service.posts(channel: channel.id, query: .latest(perPage: 1),
-                                                               collapsedThreads: false, priority: .background)
-                    guard session.epoch == epoch, !Task.isCancelled, let post = page.posts.first else { return }
-                    // Мимо могли прийти более свежие realtime-события — не откатываем.
-                    guard channel.lastPostAt == post.createAt || session.channelPreviews[channel.id] == nil else { return }
+                    guard let post = try await session.latestRootPost(in: channel.id),
+                          session.epoch == epoch, !Task.isCancelled,
+                          let fresh = session.directory.channels[channel.id] else { return }
+                    // Мимо могли прийти более свежие realtime-события — не откатываем:
+                    // не трогаем превью, если его уже заполнил более свежий корень.
+                    guard session.channelPreviews[channel.id] == nil
+                        || fresh.lastRootPostAt <= post.createAt else { return }
                     session.channelPreviews[channel.id] = session.sidebarPreview(of: post)
                     session.channelPreviewStamp[channel.id] = post.id
                     session.markDirty(.sidebar)
