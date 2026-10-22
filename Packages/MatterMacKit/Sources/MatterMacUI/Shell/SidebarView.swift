@@ -86,6 +86,7 @@ struct SidebarView: View {
             get: { session.selectedChannel },
             set: { if let id = $0 { session.select(channel: id) } })) {
             if let sidebar = session.sidebar {
+                SidebarSearchRow { session.isQuickSwitcherVisible = true }
                 ForEach(session.chatListSections) { section in
                     let rows = section.visibleRows(selected: session.selectedChannel)
                     if !rows.isEmpty || section.kind == .custom || section.kind == .channels || section.hiddenCount > 0 {
@@ -176,6 +177,49 @@ struct SidebarView: View {
 /// sidebar toggle; its width fills the space back to the traffic lights so the name
 /// starts there. (`.navigation` items start after the toggle, in the detail column,
 /// and a plain overlay there would not receive clicks: the title bar view takes them.)
+/// Строка поиска над списком чатов: клик открывает ⌘K-свитчер — по именам
+/// каналов, людей из команды (в том числе без открытого чата) и каналам,
+/// в которых пользователя ещё нет (ADR 0046).
+private struct SidebarSearchRow: View {
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 6) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+                Text("Search")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 4)
+                Text(verbatim: "⌘K")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundStyle(.tertiary)
+                    .padding(.horizontal, 4)
+                    .frame(minWidth: 20, minHeight: 17)
+                    .background(RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.primary.opacity(0.07)))
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 7)
+            .frame(height: 28)
+            .frame(maxWidth: .infinity)
+            .background(RoundedRectangle(cornerRadius: 7, style: .continuous)
+                .fill(Color.primary.opacity(0.06)))
+            .contentShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .listRowSeparator(.hidden)
+        .padding(.horizontal, 10)
+        .padding(.top, 4)
+        .help("Search chats, team channels and people (⌘K)")
+        .accessibilityLabel(Text("Search"))
+        .accessibilityHint(Text("Opens the quick switcher: jump to a chat, team channel or person"))
+    }
+}
+
 private struct SidebarTitleToolbar: ViewModifier {
     /// Traffic lights, the sidebar toggle, and toolbar margins.
     static let reservedWidth: CGFloat = 154

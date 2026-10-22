@@ -62,7 +62,7 @@ struct QuickSwitcherTests {
     private static let group = Channel(id: ChannelID(unchecked: CoreFixtures.id("gm", 1)), teamID: nil, type: .group,
                                        name: "a1b2c3", displayName: "alice, anna, ben, carl")
 
-    private func harness(fullNames: Bool = true) async -> SidebarHarness {
+    private func harness(fullNames: Bool = true, unjoined: [Channel] = []) async -> SidebarHarness {
         await SidebarHarness(configure: { state in
             let me = state.me.id
             if fullNames {
@@ -101,7 +101,7 @@ struct QuickSwitcherTests {
             state.memberships[Self.group.id] = ChannelMembership(channelID: Self.group.id, userID: me,
                                                                   lastViewedAt: MattermostTimestamp(milliseconds: 700))
             state.statuses[Self.anna.id] = .away
-        })
+        }, directory: { $0.publicChannels[CoreFixtures.team.id] = unjoined })
     }
 
     private func ready(_ h: SidebarHarness) async {
@@ -183,6 +183,53 @@ struct QuickSwitcherTests {
         // Existing DM partners are not repeated as people.
         let anna = await h.session.quickSwitcherResults(query: "anna")
         #expect(!anna.contains { $0.kind == .user(Self.anna.id) })
+        _ = await h.session.shutdown(revokeServerSession: false)
+    }
+
+    @Test func searchListsUnjoinedTeamChannelsInOwnSection() async throws {
+        // Каналы команды, где пользователя нет, серверный поиск доносит отдельной
+        // секцией; открытие такого результата присоединяет (ADR 0046).
+        let guild = Channel(id: ChannelID(unchecked: CoreFixtures.id("pub", 1)), teamID: CoreFixtures.team.id,
+                            type: .open, name: "design-guild", displayName: "Design Guild")
+        let h = await harness(unjoined: [guild])
+        await ready(h)
+        // Пустой запрос и одиночная буква сервер не беспокоят.
+        _ = await h.session.quickSwitcherResults(query: "g")
+        #expect(!h.service.calls.contains("searchChannels"), "односимвольный поиск не ходит на сервер")
+        let items = await h.session.quickSwitcherResults(query: "guild")
+        let unjoined = items.filter { $0.section == .teamChannels }
+        #expect(unjoined.map(\.title) == ["Design Guild"])
+        #expect(unjoined.allSatisfy { $0.requiresJoin })
+        #expect(unjoined.allSatisfy { item in
+            if case .channel(let id) = item.kind { return id == guild.id }
+            return false
+        })
+        // Открытие найденного канала делает пользователем участником.
+        #expect(try await h.session.joinAndLoadChannel(guild.id) == guild.id)
+        #expect(await h.session.directory.memberships[guild.id] != nil)
+        _ = await h.session.shutdown(revokeServerSession: false)
+    }
+
+    @Test func unjoinedSuggestionsAreBoundedAndSkipMemberChannels() async throws {
+        // Семь публичных каналов по запросу — в свитчере не больше пяти; канал,
+        // в котором пользователь уже состоит, в серверную секцию не попадает.
+        var unjoined = (0..<7).map { n in
+            Channel(id: ChannelID(unchecked: CoreFixtures.id("pub", 2 + n)), teamID: CoreFixtures.team.id,
+                    type: .open, name: "moss-\(n)", displayName: "Mossy \(n)")
+        }
+        let member = Channel(id: ChannelID(unchecked: CoreFixtures.id("pub", 9)), teamID: CoreFixtures.team.id,
+                             type: .open, name: "member", displayName: "Moss Team")
+        unjoined.append(member)
+        let h = await harness(unjoined: unjoined)
+        await ready(h)
+        // Вступаем в один из найденных, как это делает свитчер при открытии.
+        _ = try await h.session.joinAndLoadChannel(member.id)
+        let items = await h.session.quickSwitcherResults(query: "moss")
+        let suggestions = items.filter { $0.section == .teamChannels }
+        #expect(suggestions.count == ServerSession.maximumUnjoinedSuggestions)
+        #expect(suggestions.allSatisfy { item in item.kind != .channel(member.id) })
+        #expect(items.contains { item in item.kind == .channel(member.id) && item.section == .matches },
+                "вступленный канал остаётся в локальных результатах")
         _ = await h.session.shutdown(revokeServerSession: false)
     }
 

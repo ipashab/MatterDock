@@ -441,7 +441,20 @@ public final class SessionViewModel {
     public func open(_ item: QuickSwitchItem) {
         isQuickSwitcherVisible = false
         switch item.kind {
-        case .channel(let id): select(channel: id)
+        case .channel(let id):
+            if item.requiresJoin {
+                // Канал найден серверным поиском, пользователь не участник:
+                // открытие — это явное действие, присоединяемся и входим.
+                Task {
+                    do throws(UserFacingError) {
+                        try await joinAndOpen(id)
+                    } catch {
+                        if !Task.isCancelled { self.inlineError = UserFacingErrorText.describe(error) }
+                    }
+                }
+            } else {
+                select(channel: id)
+            }
         case .user(let id): openDirectMessage(with: id)
         }
     }

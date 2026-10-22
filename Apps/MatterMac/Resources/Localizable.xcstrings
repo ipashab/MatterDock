@@ -8294,6 +8294,46 @@
           }
         }
       }
+    },
+    "not joined": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "вы не участник"
+          }
+        }
+      }
+    },
+    "Team channels": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Каналы команды"
+          }
+        }
+      }
+    },
+    "Search chats, team channels and people (⌘K)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Поиск чатов, каналов команды и людей (⌘K)"
+          }
+        }
+      }
+    },
+    "Opens the quick switcher: jump to a chat, team channel or person": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открывает быстрый переход: к чату, каналу команды или человеку"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

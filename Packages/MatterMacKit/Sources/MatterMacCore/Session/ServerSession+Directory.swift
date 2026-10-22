@@ -149,12 +149,17 @@ extension ServerSession {
 
     // MARK: - Quick switcher & completions
 
+    /// Сколько «неприсоединённых» каналов из серверного поиска показывать в ⌘K:
+    /// свои беседы и люди важнее, каталог не должен их вытеснять.
+    public static let maximumUnjoinedSuggestions = 5
+
     /// ⌘K results. With no query: unread conversations, then recently viewed ones
     /// (not the open one, nor archived channels). With a query: local channels and
     /// conversations ranked by match quality (case- and diacritic-insensitive), then
-    /// unread, then recency; then people without a DM from server autocomplete.
+    /// channels of the team the user has not joined (server search; opening one
+    /// joins it), then people without a DM from server autocomplete.
     /// Group messages are titled with the members' display names when the directory
-    /// knows them. Nothing but that autocomplete leaves the device.
+    /// knows them. Nothing but that search and autocomplete leaves the device.
     public func quickSwitcherResults(query: String, limit: Int = 20) async -> [QuickSwitchItem] {
         guard isActiveSessionAlive else { return [] }
         let epoch = epoch
@@ -229,6 +234,23 @@ extension ServerSession {
             quickSwitchItem(candidate.channel, title: candidate.title, unread: candidate.unread,
                             section: needle.isEmpty ? (candidate.unread.isUnread ? .unread : .recent) : .matches,
                             members: groupMembers[candidate.channel.id] ?? [], known: known, showsTeams: showsTeams)
+        }
+        // Каналы команды, в которых пользователя ещё нет: серверный поиск по
+        // названию (как в официальном клиенте). Открытие такого результата
+        // присоединяет к каналу и выбирает его.
+        if trimmed.count >= 2, let team = selectedTeam, results.count < limit,
+           let found = try? await service.searchChannels(team: team, term: trimmed) {
+            guard self.epoch == epoch, isActiveSessionAlive else { return [] }
+            let mine = Set(directory.channels.keys)
+            for channel in found.prefix(Self.maximumUnjoinedSuggestions)
+            where channel.type == .open && !mine.contains(channel.id)
+                && channel.teamID == team && !channel.isArchived {
+                guard results.count < limit else { break }
+                results.append(QuickSwitchItem(
+                    kind: .channel(channel.id), title: displayName(of: channel),
+                    subtitle: String(localized: "not joined"), channelType: channel.type,
+                    isUnread: false, section: .teamChannels, requiresJoin: true))
+            }
         }
         // People without an existing DM, from the server's user autocomplete.
         let term = trimmed.lowercased()

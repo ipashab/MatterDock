@@ -269,11 +269,13 @@ struct QuickSwitcherGroup: Identifiable {
             }
         }
         let hasPeople = runs.contains { $0.0 == .people }
+        let hasOtherLists = hasPeople || runs.contains { $0.0 == .teamChannels }
         return runs.enumerated().map { index, run in
             let title: String? = switch run.0 {
             case .unread: String(localized: "Unread")
             case .recent: String(localized: "Recent")
-            case .matches: hasPeople ? String(localized: "Conversations") : nil
+            case .matches: hasOtherLists ? String(localized: "Conversations") : nil
+            case .teamChannels: String(localized: "Team channels")
             case .people: String(localized: "People")
             }
             return QuickSwitcherGroup(section: run.0, title: title, items: run.1, isFirst: index == 0)

@@ -209,7 +209,22 @@ public final class FakeMattermostService: MattermostService {
         return channel
     }
 
-    public func joinChannel(_ id: ChannelID, me: UserID) async throws(APIError) {}
+    /// Как сервер: вступление в канал создаёт членство. Канал может не быть
+    /// загружен (наш — из каталога не-членских); тогда он подгружается из
+    /// списка публичных каналов команды.
+    public func joinChannel(_ id: ChannelID, me: UserID) async throws(APIError) {
+        record("joinChannel")
+        let candidate = directory.withLock { state in
+            state.publicChannels.values.flatMap { $0 }.first { $0.id == id }
+        }
+        guard (withState({ $0.channels[id] }) ?? candidate) != nil else {
+            throw .notFound(ServerErrorInfo(id: "", statusCode: 404, requestID: nil))
+        }
+        withState { state in
+            if let candidate, state.channels[id] == nil { state.channels[id] = candidate }
+            state.memberships[id] = ChannelMembership(channelID: id, userID: me)
+        }
+    }
     public func leaveChannel(_ id: ChannelID, me: UserID) async throws(APIError) {}
 
     public func viewChannel(_ id: ChannelID?, previous: ChannelID?, collapsedThreadsSupported: Bool)

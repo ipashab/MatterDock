@@ -105,6 +105,30 @@ struct QuickSwitcherUITests {
 
     /// While closed the palette takes no part in hit-testing, so clicks and scrolls
     /// reach the conversation; while open its backdrop covers the window.
+    /// Серверный поиск каналов команды: результат приходит отдельной секцией, а
+    /// Return присоединяет к каналу и выбирает его (ADR 0046).
+    @Test func openingAnUnjoinedTeamChannelJoinsAndSelectsIt() async throws {
+        let f = try await Fixture(onScreen: false)
+        defer { f.close() }
+        f.model.isQuickSwitcherVisible = true
+        let editor = try await f.fieldEditor()
+        try await f.settle { f.titles().count > 0 }
+        editor.insertText("guild", replacementRange: editor.selectedRange())
+        let guildID = SwitcherData.guild.id
+        try await f.settle {
+            (f.probe.model?.results.first { $0.kind == .channel(guildID) }) != nil
+        }
+        let palette = try #require(f.probe.model)
+        let guild = try #require(palette.results.first { $0.kind == .channel(guildID) })
+        #expect(guild.section == .teamChannels)
+        #expect(guild.requiresJoin)
+        editor.doCommand(by: #selector(NSResponder.insertNewline(_:)))
+        try await f.settle { f.model.selectedChannel == guildID }
+        #expect(f.service.withState { $0.memberships[guildID] != nil },
+                "открытие должно вступить в канал")
+        #expect(!f.model.isQuickSwitcherVisible)
+    }
+
     @Test func closedPaletteLetsClicksAndScrollsThrough() async throws {
         let f = try await Fixture(onScreen: false)
         defer { f.close() }
@@ -218,6 +242,7 @@ struct QuickSwitcherUITests {
                 }
             }
             self.service = service
+            service.withDirectory { $0.publicChannels[SwitcherData.northwind.id] = [SwitcherData.guild] }
             app = AppModel(environment: AppEnvironment(serviceFactory: Factory(fake: service),
                 makeRealtime: { _, _, _ in FakeRealtimeConnection() }, markupParse: { text, _ in MarkupParser.parse(text) }))
             let slot = try app.registry.add(endpoint: CoreFixtures.endpoint,
@@ -335,6 +360,10 @@ private enum SwitcherData {
                                     displayName: "alice, olivia, marcus, priya, liam, noah, emma")
     static let group = Channel(id: ChannelID(unchecked: CoreFixtures.id("gm", 1)), teamID: nil, type: .group,
                                name: "gm-fixture", displayName: "alice, noah, sofia, emma")
+    /// Публичный канал команды, в котором пользователя нет: свитчер находит
+    /// его серверным поиском и присоединяет при открытии (ADR 0046).
+    static let guild = Channel(id: ChannelID(unchecked: CoreFixtures.id("pub", 1)), teamID: northwind.id,
+                               type: .open, name: "design-guild", displayName: "Design Guild")
 
     /// A soft two-colour gradient standing in for a profile photo.
     static func avatar(seed: Int) -> Data {

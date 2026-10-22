@@ -121,8 +121,9 @@ public struct QuickSwitchItem: Hashable, Sendable, Identifiable {
         case user(UserID)
     }
     /// Where the item is listed: with no query, unread conversations then recently
-    /// viewed ones; with a query, ranked matches then people without a DM yet.
-    public enum Section: Hashable, Sendable { case unread, recent, matches, people }
+    /// viewed ones; with a query, ranked matches, then channels found on the server
+    /// (not joined yet), then people without a DM.
+    public enum Section: Hashable, Sendable { case unread, recent, matches, teamChannels, people }
     /// Someone pictured on the row: the DM partner, the person, or GM members.
     public struct Person: Hashable, Sendable {
         public let id: UserID
@@ -149,13 +150,17 @@ public struct QuickSwitchItem: Hashable, Sendable, Identifiable {
     public let people: [Person]
     /// Presence of the DM partner or person.
     public let presence: PresenceStatus?
+    /// Канал команды, в котором пользователя ещё нет: открытие сначала
+    /// присоединяет (`join_channel`), потом выбирает.
+    public let requiresJoin: Bool
     public var id: Kind { kind }
 
     public static let maxPeople = 3
 
     public init(kind: Kind, title: String, subtitle: String, channelType: ChannelType?, isUnread: Bool,
                 mentionCount: Int = 0, isArchived: Bool = false, isMuted: Bool = false,
-                section: Section = .matches, people: [Person] = [], presence: PresenceStatus? = nil) {
+                section: Section = .matches, people: [Person] = [], presence: PresenceStatus? = nil,
+                requiresJoin: Bool = false) {
         self.kind = kind
         self.title = title
         self.subtitle = subtitle
@@ -167,6 +172,7 @@ public struct QuickSwitchItem: Hashable, Sendable, Identifiable {
         self.section = section
         self.people = Array(people.prefix(Self.maxPeople))
         self.presence = presence
+        self.requiresJoin = requiresJoin
     }
 }
 
