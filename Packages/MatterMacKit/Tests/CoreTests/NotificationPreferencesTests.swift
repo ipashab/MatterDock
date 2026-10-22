@@ -72,6 +72,21 @@ struct NotificationPolicyTests {
         #expect(kind(type: .direct, crt: true, reply: true) == .directMessage)
     }
 
+    @Test func collapsedThreadRepliesInDialogsRequireFollowersOnAll() {
+        // На "all" ответ в треде уведомляет только серверного follower'а — так же,
+        // как в каналах (webapp notification_actions.jsx, isCrtReply-ветка).
+        #expect(kind(type: .direct, desktop: .all, crt: true, reply: true) == nil)
+        #expect(kind(type: .direct, desktop: .all, crt: true, reply: true, follower: true) == .directMessage)
+        #expect(kind(type: .group, desktop: .all, crt: true, reply: true) == nil)
+        #expect(kind(type: .group, desktop: .all, crt: true, reply: true, follower: true) == .directMessage)
+        #expect(kind(type: .direct, desktop: .all, crt: true, reply: false) == .directMessage)
+        // На "mention" причуды официального клиента остаются: личный диалог
+        // уведомляет всё, групповой — упоминания и follower'ов треда.
+        #expect(kind(type: .direct, crt: true, reply: true) == .directMessage)
+        #expect(kind(type: .group, crt: true, reply: true) == nil)
+        #expect(kind(type: .group, crt: true, reply: true, follower: true) == .directMessage)
+    }
+
     @Test func serverEligibleFollowersNotifyWithoutCreatingMentions() {
         #expect(kind(crt: true, reply: true, follower: true) == .channelMessage)
         #expect(kind(desktop: .all, crt: true, reply: true, follower: true) == .channelMessage)

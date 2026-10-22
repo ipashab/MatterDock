@@ -18,6 +18,11 @@ import MattermostRealtime
 /// - Collapsed channel replies also notify server-selected desktop followers. The
 ///   posted event's `followers` list already resolves `desktop_threads` and channel
 ///   overrides; local follow lists are incomplete and must not substitute for it.
+/// - In direct and group dialogs a collapsed reply follows the same follower rule
+///   as channels when the resolved level is "all": on "mention" the official client
+///   keeps its dialog quirk (direct messages notify for every post, group messages
+///   only for mentionees and thread followers — `followers` merges into `mentions`
+///   there), on "all" only followers are notified.
 public enum NotificationPolicy {
     public struct Input: Sendable {
         public var post: Post
@@ -60,11 +65,23 @@ public enum NotificationPolicy {
         }
         guard level != .nothing else { return nil }
         if isMention(input) { return .mention }
+        let threadReply = input.collapsedThreads && post.rootID != nil
         if input.channelType.isDirectOrGroup {
-            // Direct messages always notify at "mentions"; group messages need "all".
-            return input.channelType == .direct || level == .all ? .directMessage : nil
+            let notifies: Bool
+            if level == .all {
+                // On "all" a collapsed reply requires the server follower pick —
+                // also in dialogs; otherwise every busy channel's threads would
+                // ring the recipient (webapp notification_actions, isCrtReply).
+                notifies = !threadReply || input.notifiesThreadFollower
+            } else {
+                // On "mention" the official client merges `followers` into
+                // `mentions`: direct dialogs notify for every post, group
+                // dialogs keep mentions plus thread followers.
+                notifies = input.channelType == .direct || input.notifiesThreadFollower
+            }
+            return notifies ? .directMessage : nil
         }
-        if input.collapsedThreads, post.rootID != nil {
+        if threadReply {
             return input.notifiesThreadFollower ? .channelMessage : nil
         }
         return level == .all ? .channelMessage : nil
