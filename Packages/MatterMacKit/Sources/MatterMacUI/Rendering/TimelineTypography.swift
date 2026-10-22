@@ -50,6 +50,14 @@ nonisolated enum TimelinePalette {
     static let codeBorder = dynamic { isDark, highContrast in
         highContrast ? NSColor.secondaryLabelColor : NSColor.labelColor.withAlphaComponent(isDark ? 0.14 : 0.10)
     }
+    /// Подсветка кода (ADR 0053): только системные цвета, которые сами адаптируются
+    /// к тёмной/светлой теме, поэтому ключ кеша рендера не различает их.
+    static let codeKeyword = dynamic { _, _ in NSColor.systemRed }
+    static let codeString = dynamic { _, _ in NSColor.systemBlue }
+    static let codeNumber = dynamic { _, _ in NSColor.systemBlue }
+    static let codeComment = dynamic { _, highContrast in
+        highContrast ? NSColor.secondaryLabelColor : NSColor.tertiaryLabelColor
+    }
     /// Text of a mention of the signed-in user (on `mentionHighlight`).
     static let selfMentionText = dynamic { _, _ in NSColor.labelColor }
     /// Row background of a message that mentions the signed-in user.

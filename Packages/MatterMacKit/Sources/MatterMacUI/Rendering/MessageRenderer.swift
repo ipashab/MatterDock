@@ -224,8 +224,8 @@ public final class MessageRenderer {
             style.bold = true
             renderInlines(inlines, style: style, depth: 0, state: state)
 
-        case .codeBlock(_, let code):
-            renderCodeBlock(code, context: context, spacingBefore: spacingBefore, state: state)
+        case .codeBlock(let language, let code):
+            renderCodeBlock(code, language: language, context: context, spacingBefore: spacingBefore, state: state)
 
         case .blockQuote(let children):
             renderQuote(children, context: context, spacingBefore: spacingBefore, state: state)

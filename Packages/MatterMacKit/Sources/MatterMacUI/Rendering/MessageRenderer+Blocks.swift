@@ -2,7 +2,8 @@ import AppKit
 import MatterMacModels
 
 extension MessageRenderer {
-    func renderCodeBlock(_ code: String, context: BlockContext, spacingBefore: CGFloat, state: RenderState) {
+    func renderCodeBlock(_ code: String, language: String?, context: BlockContext,
+                        spacingBefore: CGFloat, state: RenderState) {
         let block = TimelineTextBlock(decoration: .code)
         // На исходящем пузыре подложка кода — светлый слой поверх синего (ADR 0041).
         let background = state.surface == .outgoing ? TimelinePalette.bubbleOutgoingCodeBackground
@@ -30,9 +31,27 @@ extension MessageRenderer {
         var text = code
         if text.hasSuffix("\n") { text.removeLast() }
         if text.isEmpty { text = " " }
-        state.appendMultiline(text, attributes: [
-            .font: fonts.mono, .foregroundColor: context.color, .paragraphStyle: style,
-        ], continuationStyle: style)
+        // Подсветка — системные адаптивные цвета поверх обычного текста блока;
+        // незнакомый язык рендерится одним цветом, как раньше (ADR 0053).
+        let segments = CodeHighlighter.segments(text, language: language)
+        if segments.isEmpty {
+            state.appendMultiline(text, attributes: [
+                .font: fonts.mono, .foregroundColor: context.color, .paragraphStyle: style,
+            ], continuationStyle: style)
+        } else {
+            for segment in segments {
+                let color: NSColor = switch segment.kind {
+                case .keyword: TimelinePalette.codeKeyword
+                case .string: TimelinePalette.codeString
+                case .number: TimelinePalette.codeNumber
+                case .comment: TimelinePalette.codeComment
+                case nil: context.color
+                }
+                state.appendMultiline(segment.text, attributes: [
+                    .font: fonts.mono, .foregroundColor: color, .paragraphStyle: style,
+                ], continuationStyle: style)
+            }
+        }
     }
 
     func renderList(_ list: MarkupList, context: BlockContext,
