@@ -134,7 +134,12 @@ struct ThreadsTests {
         await h.openChannel()
         let root = CoreFixtures.post(1, channel: h.channel.id)
         let reply = CoreFixtures.post(50, channel: h.channel.id, rootID: root.id)
-        h.service.withState { $0.posts[reply.id] = reply }
+        h.service.withState { state in
+            state.posts[reply.id] = reply
+            // Членство уже есть (тред отслеживается) — только такие метятся автоматически.
+            state.threads = [UserThread(root: root, replyCount: 1, lastReplyAt: reply.createAt, lastViewedAt: .zero,
+                                        unreadReplies: 1, unreadMentions: 0, participants: [CoreFixtures.bob])]
+        }
         await h.session.updateAppState(isActive: true, isWindowVisible: true)
         await h.session.openThread(root: root.id, channel: h.channel.id)
         let target = TimelineTarget.thread(root: root.id, channel: h.channel.id)
@@ -152,5 +157,28 @@ struct ThreadsTests {
         // The app in the background never marks.
         await h.session.updateAppState(isActive: false, isWindowVisible: true)
         #expect(await h.session.threadReadTarget() == nil)
+    }
+
+    @Test func threadWithoutMembershipIsNeitherMarkedReadNorFollowed() async throws {
+        // Открытие треда не должно подписывать: сервер 7.8 строит подписку из
+        // read-метки одного треда (MaintainMembership с Following=true), поэтому
+        // без существующего членства метка не ставится вовсе — как в веб-клиенте.
+        let h = await SessionHarness(configure: { state in state.collapsedThreadsConfig = "always_on" })
+        await h.openChannel()
+        let root = CoreFixtures.post(1, channel: h.channel.id)
+        let reply = CoreFixtures.post(50, channel: h.channel.id, rootID: root.id)
+        h.service.withState { $0.posts[reply.id] = reply }
+        await h.session.updateAppState(isActive: true, isWindowVisible: true)
+        await h.session.openThread(root: root.id, channel: h.channel.id)
+        let target = TimelineTarget.thread(root: root.id, channel: h.channel.id)
+        _ = await eventually { await h.session.windows[target]?.isLoaded == true }
+        await h.session.updateVisibility(target: target, first: root.id, last: reply.id, atLiveEdge: true)
+        // Позиция зафиксирована (панель не опрашивает членство по кругу)…
+        #expect(await eventually { await h.session.threadReadMark?.root == root.id })
+        // …но серверу не отправлено ни read-метки, ни подписки.
+        #expect(h.service.withState { $0.threadReadMarks }.isEmpty)
+        #expect(h.service.withState { $0.threads.isEmpty })
+        #expect(await h.session.isFollowingThread(root.id) == false)
+        _ = await h.session.shutdown(revokeServerSession: false)
     }
 }

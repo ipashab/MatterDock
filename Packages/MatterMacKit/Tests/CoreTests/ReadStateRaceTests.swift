@@ -98,7 +98,12 @@ struct ReadStateRaceTests {
         let root = CoreFixtures.post(1, channel: h.channel.id)
         let first = CoreFixtures.post(50, channel: h.channel.id, rootID: root.id)
         let newer = CoreFixtures.post(51, channel: h.channel.id, rootID: root.id)
-        h.service.withState { $0.posts[first.id] = first }
+        h.service.withState { state in
+            state.posts[first.id] = first
+            // Членство уже есть — авто-метка допустима.
+            state.threads = [UserThread(root: root, replyCount: 1, lastReplyAt: first.createAt, lastViewedAt: .zero,
+                                        unreadReplies: 1, unreadMentions: 0, participants: [CoreFixtures.bob])]
+        }
         await h.session.openThread(root: root.id, channel: h.channel.id)
         let target = TimelineTarget.thread(root: root.id, channel: h.channel.id)
         #expect(await eventually { await h.session.windows[target]?.isLoaded == true })

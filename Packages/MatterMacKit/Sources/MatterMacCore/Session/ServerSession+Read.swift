@@ -104,6 +104,19 @@ extension ServerSession {
             guard !Task.isCancelled, let current = session.threadReadTarget(), current.root == candidate.root else { return }
             let epoch = session.epoch
             do {
+                // Read-метка одного треда удваивается как подписка: сервер (проверено на
+                // 7.8, app/user.go UpdateThreadReadForUser) создаёт отсутствующее
+                // членство с Following=true и воскрешает подписку после явного Unfollow.
+                // Поэтому метим только треды с уже существующим членством — как и
+                // официальный веб-клиент (thread_viewer.tsx markThreadRead); без
+                // членства на сервере нет и непрочитанных, метить нечего.
+                guard try await session.service.userThread(current.root, team: team, me: session.me.id) != nil else {
+                    guard session.epoch == epoch, !Task.isCancelled else { return }
+                    // Фиксируем позицию, чтобы простаивающая панель не опрашивала
+                    // членство заново; новые ответы снова пройдут проверку.
+                    session.threadReadMark = (current.root, current.latest)
+                    return
+                }
                 try await session.service.markThreadRead(current.root, at: current.latest, team: team, me: session.me.id)
                 guard session.epoch == epoch, !Task.isCancelled else { return }
                 session.threadReadMark = (current.root, current.latest)
