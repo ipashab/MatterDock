@@ -157,6 +157,9 @@ public enum SendState: Hashable, Sendable {
     /// The request may or may not have reached the server (timeout or lost response).
     /// The user decides whether to retry, which may create a duplicate.
     case outcomeUnknown
+    /// Отложенная отправка (кнопка «Send later»): уйдёт, когда наступит `fireAt`
+    /// (ADR 0052).
+    case scheduled(fireAt: MattermostTimestamp)
 }
 
 /// Client-side hints for which actions to offer. The server remains the authority;

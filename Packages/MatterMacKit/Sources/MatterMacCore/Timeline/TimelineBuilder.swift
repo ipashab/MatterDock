@@ -111,12 +111,13 @@ public enum TimelineBuilder {
     }
 
     public static func build(window: HistoryWindow, store: PostStore, directory: DirectoryStore,
-                             pending: [PendingSend], context: TimelineBuildContext,
+                             pending: [PendingSend], scheduled: [ScheduledSend] = [],
+                             context: TimelineBuildContext,
                              customEmoji: CustomEmojiStore? = nil) -> Output {
         var missingEmoji: [String] = []
         var missingEmojiSet = Set<String>()
         var items: [TimelineItem] = []
-        items.reserveCapacity(window.count + pending.count + 8)
+        items.reserveCapacity(window.count + pending.count + scheduled.count + 8)
         var missing = Set<UserID>()
         let isThread: Bool
         if case .thread = window.target { isThread = true } else { isThread = false }
@@ -252,6 +253,30 @@ public enum TimelineBuilder {
                 hasher.combine(continuesGroup)
                 hasher.combine(isLastInGroup)
                 items.append(TimelineItem(id: TimelineItemID(.pending(send.pendingID)),
+                                          revision: UInt64(bitPattern: Int64(hasher.finalize())),
+                                          content: .post(presentation)))
+            }
+            // Отложенные отправки — той же живой кромкой, после pending: пузырёк с
+            // часами и временем отправки, кнопка отмены (ADR 0052). Стоят своей
+            // группой: они ещё не часть разговора.
+            for item in scheduled.sorted(by: { $0.fireAt < $1.fireAt }) {
+                let author = authorPresentation(context.me, post: nil, directory: directory, me: context.me,
+                                                missing: &missing)
+                var blocks: [MarkupBlock] = [.paragraph([.text(item.message)])]
+                if !item.attachments.isEmpty {
+                    blocks.append(.paragraph([.emphasis([.text("Attachments: \(item.attachments.count) (not yet sent)")])]))
+                }
+                let presentation = PostPresentation(
+                    postID: nil, pendingID: item.scheduledID, channelID: item.channelID, rootID: item.rootID,
+                    author: author, createdAt: item.fireAt, isContinuation: false,
+                    body: .document(MessageDocument(blocks: blocks), isCollapsed: false),
+                    isEdited: false, isPinned: false, files: [], reactions: [], replyCount: 0,
+                    showsThreadContext: false, sendState: .scheduled(fireAt: item.fireAt),
+                    actions: .none, permalink: nil, isLastInGroup: true)
+                var hasher = Hasher()
+                hasher.combine(item.fireAt)
+                hasher.combine(item.attachments.count)
+                items.append(TimelineItem(id: TimelineItemID(.pending(item.scheduledID)),
                                           revision: UInt64(bitPattern: Int64(hasher.finalize())),
                                           content: .post(presentation)))
             }

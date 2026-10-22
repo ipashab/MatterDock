@@ -12,6 +12,7 @@ final class ComposerDelegateSpy: ComposerViewControllerDelegate {
     var draftBudgetBytes: Int?
 
     private(set) var sentTexts: [String] = []
+    private(set) var schedules: [(text: String, fireAt: Date)] = []
     private(set) var draftChanges = 0
     private(set) var refusals: [ComposerRefusal] = []
     private(set) var escapes = 0
@@ -23,6 +24,7 @@ final class ComposerDelegateSpy: ComposerViewControllerDelegate {
     private(set) var removedAttachments: [String] = []
 
     func composerDidRequestSend(text: String) { sentTexts.append(text) }
+    func composerDidRequestSchedule(text: String, fireAt: Date) { schedules.append((text, fireAt)) }
     func composerDraftDidChange() { draftChanges += 1 }
     func composerRemainingDraftBytes() -> Int {
         guard let draftBudgetBytes, let composer else { return .max }

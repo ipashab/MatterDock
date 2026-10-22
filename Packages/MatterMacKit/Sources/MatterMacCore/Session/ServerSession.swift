@@ -77,6 +77,7 @@ public actor ServerSession {
     var windows: [TimelineTarget: HistoryWindow] = [:]
     var journal = EventJournal(capacity: 256)
     var pending = PendingSendQueue()
+    var scheduled = ScheduledSendQueue()
     var selectedTeam: TeamID?
     var activeChannel: ChannelID?
     var openThread: TimelineTarget?
@@ -169,6 +170,7 @@ public actor ServerSession {
         case teamUnreads
         case mentionFeedPage
         case alertSender
+        case scheduledSweeper
         case emojiFetch
         case cacheWrite
     }
@@ -271,7 +273,7 @@ public actor ServerSession {
             }
         }
         await service.shutdown()
-        let reservations = pending.removeAll().map(\.reservation)
+        let reservations = pending.removeAll().map(\.reservation) + scheduled.removeAll().map(\.reservation)
         deps.unsent.removeAll(for: scope, pending: reservations)
         windows.removeAll()
         store.removeAll()

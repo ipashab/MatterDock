@@ -572,11 +572,21 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
         if pending.discard != nil {
             let button = discardButton ?? makeButton(\.discardButton, style: .bordered)
             button.isHidden = false
-            button.configure(title: TimelineStrings.discard, font: fonts.meta)
+            // Для отложенной строки кнопка — «Cancel», снятие с расписания без
+            // подтверждающего диалога: текст никуда не теряется только по явной
+            // отмене, undo не требуется (ADR 0052).
+            let isSchedule: Bool
+            if case .scheduled = state { isSchedule = true } else { isSchedule = false }
+            button.configure(title: isSchedule ? TimelineStrings.cancelSchedule : TimelineStrings.discard,
+                             font: fonts.meta)
             let pendingID = post.pendingID
             button.onPress = { [weak self] in
                 guard let pendingID else { return }
-                self?.host?.perform(.discardSend(pendingID))
+                if isSchedule {
+                    self?.host?.perform(.cancelSchedule(pendingID))
+                } else {
+                    self?.host?.perform(.discardSend(pendingID))
+                }
             }
             button.isEnabled = pendingID != nil
         }

@@ -577,6 +577,16 @@ extension ServerSession {
         }
         if activeChannel == id { activeChannel = nil }
         if openThread?.channelID == id { openThread = nil }
+        // Отложенные отправки отозванного канала не выбрасываются: их текст
+        // остаётся виден как сбойная pending-строка, как и обычные отправки.
+        for item in scheduled.items where item.channelID == id {
+            _ = scheduled.remove(item.scheduledID)
+            var failed = PendingSend(pendingID: item.scheduledID, channelID: item.channelID, rootID: item.rootID,
+                                     message: item.message, attachments: item.attachments, createdAt: item.fireAt,
+                                     reservation: item.reservation)
+            failed.state = .failed(.permissionDenied)
+            pending.append(failed)
+        }
         if channel != nil || !blocked.isEmpty {
             notify(reason ?? .accessRevoked(channel: id))
         }

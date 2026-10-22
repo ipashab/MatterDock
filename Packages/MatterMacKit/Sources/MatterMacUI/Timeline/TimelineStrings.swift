@@ -17,6 +17,7 @@ enum TimelineStrings {
     static let loadingNewer = String(localized: "Loading newer messages…")
     static let retry = String(localized: "Retry")
     static let discard = String(localized: "Discard")
+    static let cancelSchedule = String(localized: "Cancel")
     static let jumpToLatest = String(localized: "Jump to latest")
     static let outcomeUnknown = String(localized: "This message may have been sent. Retrying could create a duplicate.")
     static let sending = String(localized: "Sending…")
@@ -181,7 +182,14 @@ enum TimelineStrings {
         case .sending: sending
         case .failed(let error): notSent(error)
         case .outcomeUnknown: outcomeUnknown
+        case .scheduled(let fireAt): scheduledFor(fireAt)
         }
+    }
+
+    /// Подпись отложенной строки. Честно предупреждает, что запись не персистентна:
+    /// при выходе из приложения она исчезает (ADR 0052).
+    static func scheduledFor(_ timestamp: MattermostTimestamp) -> String {
+        String(localized: "Scheduled for \(fullDateTime(timestamp)) — unsent if the app quits")
     }
 
     /// Content-free explanation of a typed error. Never includes server-provided text.

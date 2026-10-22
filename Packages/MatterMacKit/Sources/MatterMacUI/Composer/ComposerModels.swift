@@ -136,6 +136,10 @@ public protocol ComposerCompletionProvider: AnyObject {
 public protocol ComposerViewControllerDelegate: AnyObject {
     /// The user asked to send. `text` is exact (no trimming or normalization).
     func composerDidRequestSend(text: String)
+    /// Отложенная отправка («Send later»): текст уходит во внутрипроцессную
+    /// очередь и отправится в `fireAt`. Хост принимает запись так же, как обычную
+    /// отправку (снятие байтов черновика в резервацию), только с `fireAt`.
+    func composerDidRequestSchedule(text: String, fireAt: Date)
     /// Text or selection changed through user action. Coalesced to at most 4 Hz;
     /// read `currentDraft()` and save it. Never fired by `load(draft:)`/`clear()`.
     func composerDraftDidChange()

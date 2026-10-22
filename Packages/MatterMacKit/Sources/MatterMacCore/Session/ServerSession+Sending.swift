@@ -14,6 +14,8 @@ extension ServerSession {
         case attachmentsUnavailable
         case channelUnavailable
         case budget(UnsentWorkLedger.Refusal)
+        /// Отложенная отправка в прошлое (пикер обязан не давать такие даты).
+        case fireDatePast
     }
 
 

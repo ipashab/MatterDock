@@ -249,12 +249,15 @@ struct TimelineRowMetrics {
     static func showsSpinner(_ state: SendState) -> Bool {
         switch state {
         case .queued, .uploading, .sending: true
-        case .failed, .outcomeUnknown: false
+        case .failed, .outcomeUnknown, .scheduled: false
         }
     }
 
     static func offersUploadDiscard(_ state: SendState) -> Bool {
-        switch state { case .queued, .uploading: true; default: false }
+        switch state {
+        case .queued, .uploading, .scheduled: true
+        default: false
+        }
     }
 
     static func offersRetry(_ state: SendState) -> Bool {

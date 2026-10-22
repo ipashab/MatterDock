@@ -80,6 +80,8 @@ final class ConversationController: NSViewController, DraftProviding, ComposerVi
         // System (Unicode) emoji only; custom emoji keep rendering as `:name:`.
         timeline.emojiLookup = { EmojiCatalog.system.glyph(for: $0) }
         composer.delegate = self
+        // Отложенная отправка доступна в панели разговора (не в пересылке).
+        composer.isSchedulingAvailable = true
         // Эмодзи в поле ввода: пикер с недавними реакциями и кастомными эмодзи
         // модели; выбор композер вставляет сам. onPick композер ставит после.
         composer.emojiPickerProvider = { [weak self] in
@@ -343,6 +345,54 @@ final class ConversationController: NSViewController, DraftProviding, ComposerVi
         updateComposerAvailability()
     }
     func composerDidPressEscape() { composer.dismissTransientUI() }
+
+    /// Отложенная отправка: тот же конвейер, что и обычная (валидация → байты
+    /// черновика в резервацию → очередь), только с датой срабатывания (ADR 0052).
+    /// Правки и слэш-команды в меню не попадают — кнопка скрыта в режимах правки,
+    /// а команда не имеет смысла «позже» (ephemeral-ответ исчезнет).
+    func composerDidRequestSchedule(text: String, fireAt: Date) {
+        guard sendTask == nil, selectionTask == nil, editingPost == nil,
+              !ServerSession.isSlashCommand(text), !environment.drafts.isSubmitting(key), let model else { return }
+        let key = key, target = target, generation = generation
+        let attachments = selectedFiles
+        saveDraft()
+        guard environment.drafts.draft(for: key)?.text == text else { return }
+        sendTask = Task { [weak self] in
+            guard let self else { return }
+            defer {
+                sendTask = nil
+                updateComposerAvailability()
+            }
+            do {
+                try await model.session.validateSend(text: text, channel: target.channelID, attachments: attachments)
+                guard !Task.isCancelled, self.generation == generation,
+                      composer.text == text, selectedFiles == attachments, await model.session.isActiveSessionAlive else { return }
+                let reservation = try environment.drafts.takeForSending(key)
+                updateComposerAvailability()
+                defer {
+                    refreshDraft(for: key)
+                    model.refreshDraft(for: key)
+                }
+                do {
+                    try await model.session.enqueueSchedule(text: text, channel: target.channelID,
+                                                            rootID: key.rootID, attachments: attachments,
+                                                            fireAt: fireAt, reservation: reservation)
+                    environment.drafts.finishSending(key, reservation: reservation, accepted: true)
+                } catch {
+                    environment.drafts.finishSending(key, reservation: reservation, accepted: false)
+                    throw error
+                }
+            } catch {
+                if !Task.isCancelled {
+                    model.inlineError = (error as? ServerSession.SendRejection).map(Self.sendRejectionText)
+                        ?? (error as? UserFacingError).map(UserFacingErrorText.describe)
+                        ?? "The message could not be scheduled. Your text has been kept."
+                }
+            }
+        }
+        updateComposerAvailability()
+    }
+
     func composerDidRequestCancelMode() {
         guard !environment.drafts.isSubmitting(key) else { return }
         editingPost = nil
@@ -434,6 +484,8 @@ final class ConversationController: NSViewController, DraftProviding, ComposerVi
             if confirm("Discard this unsent message?", detail: "This stops any upload and discards the pending text. Files already uploaded may remain on the server.", button: "Discard") {
                 run { _ = await $0.discardSend(id) }
             }
+        case .cancelSchedule(let id):
+            run { _ = await $0.cancelSchedule(id) }
         case .retryGap(let direction): direction == .older ? timelineRequestsOlder() : timelineRequestsNewer()
         case .openFile(let file): saveAttachment(file)
         case .previewImage(let file): showImageViewer(for: file)

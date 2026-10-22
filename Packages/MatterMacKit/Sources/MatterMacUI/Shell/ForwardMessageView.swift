@@ -133,6 +133,8 @@ final class ForwardMessageModel: Identifiable, ComposerViewControllerDelegate {
     }
     func composerDidRefuseInput(_ refusal: ComposerRefusal) { error = "Input exceeds a message or session memory limit. Your comment has been kept." }
     func composerDidRequestSend(text: String) { forward() }
+    // Пересылка не откладывается: кнопка скрыта (isSchedulingAvailable не ставится).
+    func composerDidRequestSchedule(text: String, fireAt: Date) {}
     func composerDidPressEscape() { if !isSending { close(discard: true) } }
     func composerDidRequestCancelMode() {}
     func composerRequestsEditLastMessage() {}

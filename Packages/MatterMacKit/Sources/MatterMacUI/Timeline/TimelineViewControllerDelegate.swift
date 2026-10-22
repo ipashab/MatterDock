@@ -23,6 +23,9 @@ nonisolated public enum TimelineAction: Hashable, Sendable {
     case jumpToPost(PostID)
     case retrySend(PendingPostID)
     case discardSend(PendingPostID)
+    /// Снять отложенную отправку с расписания (кнопка «Cancel» на пузырьке
+    /// с часами); текст записи удаляется по явному решению пользователя.
+    case cancelSchedule(PendingPostID)
     /// The user explicitly activated a link that passed the safe-link policy. The
     /// delegate opens it (for example through the platform's external-navigation
     /// adapter); the timeline never opens links itself.

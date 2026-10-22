@@ -109,6 +109,15 @@ public final class ComposerViewController: NSViewController {
     private let placeholderLabel = PassthroughLabel(labelWithString: "")
     let sendButton = ComposerIconButton()
     let attachButton = ComposerIconButton()
+    /// Отложенная отправка («Send later», ADR 0052): часы справа от поля.
+    /// Видна, только когда хост включил возможность расписания.
+    let scheduleButton = ComposerIconButton()
+    /// Разрешает меню «Send later» (меняет хост: композер разговора — да,
+    /// пересылка — нет).
+    var isSchedulingAvailable = false {
+        didSet { if isViewLoaded { updateSendButton() } }
+    }
+    private var schedulePopover: NSPopover?
     /// Эмодзи-кнопка в строке ввода: открывает пикер над композером. Видна,
     /// только когда хост настроил провайдер пикера (недавние, кастомные эмодзи).
     let emojiButton = ComposerIconButton()
@@ -224,6 +233,7 @@ public final class ComposerViewController: NSViewController {
     public func dismissTransientUI() {
         completion.dismiss()
         if let emojiPopover, emojiPopover.isShown { emojiPopover.performClose(nil) }
+        if let schedulePopover, schedulePopover.isShown { schedulePopover.performClose(nil) }
     }
 
     /// Same as pressing Send: commits a composition, then requests a send unless
@@ -285,7 +295,8 @@ public final class ComposerViewController: NSViewController {
         emojiButton.widthAnchor.constraint(equalToConstant: Self.attachButtonWidth).isActive = true
         emojiButton.heightAnchor.constraint(equalToConstant: singleLineBoxHeight).isActive = true
         emojiButton.isHidden = emojiPickerProvider == nil
-        let inputRow = NSStackView(views: [attachButton, emojiButton, inputBox, sendButton])
+        configureScheduleButton()
+        let inputRow = NSStackView(views: [attachButton, emojiButton, inputBox, scheduleButton, sendButton])
         inputRow.orientation = .horizontal
         inputRow.alignment = .bottom
         inputRow.spacing = 6
@@ -447,6 +458,25 @@ public final class ComposerViewController: NSViewController {
         ])
     }
 
+    /// Часы «Send later» между полем и Send: меню пресетов + свой пикер даты.
+    /// Ширина — как у остальных иконок, высота — как у однострочного поля.
+    private func configureScheduleButton() {
+        scheduleButton.image = NSImage(systemSymbolName: "clock.arrow.circlepath",
+                                        accessibilityDescription: "Send Later")
+        scheduleButton.isBordered = false
+        scheduleButton.target = self
+        scheduleButton.action = #selector(presentScheduleMenu(_:))
+        scheduleButton.setAccessibilityLabel("Send Later")
+        scheduleButton.toolTip = "Send Later"
+        scheduleButton.title = ""
+        scheduleButton.imagePosition = .imageOnly
+        scheduleButton.contentTintColor = .secondaryLabelColor
+        scheduleButton.translatesAutoresizingMaskIntoConstraints = false
+        scheduleButton.widthAnchor.constraint(equalToConstant: Self.attachButtonWidth).isActive = true
+        scheduleButton.heightAnchor.constraint(equalToConstant: singleLineBoxHeight).isActive = true
+        scheduleButton.isHidden = true
+    }
+
     private func configureSendButton() {
         let image = NSImage(systemSymbolName: "paperplane.fill", accessibilityDescription: nil) ?? NSImage()
         sendButton.image = image
@@ -578,6 +608,9 @@ public final class ComposerViewController: NSViewController {
         sendButton.contentTintColor = canSend ? .controlAccentColor : .tertiaryLabelColor
         let isEdit: Bool
         if case .edit = mode { isEdit = true } else { isEdit = false }
+        // Расписание недоступно в режиме правки: «отложить правку» не имеет смысла.
+        scheduleButton.isHidden = !isSchedulingAvailable || isEdit
+        scheduleButton.isEnabled = canSend
         sendButton.setAccessibilityLabel(isEdit ? String(localized: "Save edit") : String(localized: "Send message"))
         let shortcut = sendBehavior == .returnSends ? String(localized: "Return") : String(localized: "Command-Return")
         sendButton.toolTip = isEdit ? String(localized: "Save (\(shortcut))") : String(localized: "Send (\(shortcut))")
@@ -750,6 +783,117 @@ public final class ComposerViewController: NSViewController {
         requestSend()
     }
 
+    // MARK: Отложенная отправка («Send later», ADR 0052)
+
+    /// Меню расписания: пресеты веб-клиента и пикер произвольной даты. Пресеты
+    /// живут в core (`SendSchedulePreset`) — там же их тестируют.
+    @objc private func presentScheduleMenu(_ sender: Any?) {
+        let menu = NSMenu()
+        for preset in SendSchedulePreset.allCases {
+            let item = NSMenuItem(title: preset.title, action: #selector(schedulePresetChosen(_:)),
+                                   keyEquivalent: "")
+            item.target = self
+            item.representedObject = preset
+            menu.addItem(item)
+        }
+        menu.addItem(.separator())
+        let custom = NSMenuItem(title: String(localized: "Pick Date & Time…"),
+                                action: #selector(presentScheduleDatePicker(_:)), keyEquivalent: "")
+        custom.target = self
+        menu.addItem(custom)
+        menu.addItem(.separator())
+        // Честная подпись: очередь живёт только в памяти процесса (SPEC §7),
+        // сервер 7.8 не имеет API расписания — при выходе записи исчезают.
+        let note = NSMenuItem(title: String(localized: "Scheduled messages are unsent if the app quits"),
+                              action: nil, keyEquivalent: "")
+        note.isEnabled = false
+        menu.addItem(note)
+        menu.popUp(positioning: nil, at: NSPoint(x: 0, y: scheduleButton.bounds.height),
+                   in: scheduleButton)
+    }
+
+    @objc private func schedulePresetChosen(_ sender: NSMenuItem) {
+        guard let preset = sender.representedObject as? SendSchedulePreset else { return }
+        let fireDate = preset.fireDate(after: Date(), calendar: .current)
+        requestSchedule(at: fireDate)
+    }
+
+    /// Компактный пикер даты-времени с той же честной подписью.
+    @objc private func presentScheduleDatePicker(_ sender: Any?) {
+        let picker = NSDatePicker()
+        picker.datePickerStyle = .textFieldAndStepper
+        picker.datePickerElements = [.yearMonthDay, .hourMinute]
+        picker.dateValue = Date().addingTimeInterval(15 * 60)
+        picker.minDate = Date()
+        picker.translatesAutoresizingMaskIntoConstraints = false
+
+        let confirm = NSButton(title: String(localized: "Schedule"), target: self,
+                               action: #selector(scheduleDatePickerConfirmed(_:)))
+        confirm.keyEquivalent = "\r"
+        confirm.bezelStyle = .rounded
+        confirm.controlSize = .small
+        confirm.translatesAutoresizingMaskIntoConstraints = false
+
+        let note = NSTextField(wrappingLabelWithString:
+            String(localized: "Scheduled messages are unsent if the app quits"))
+        note.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        note.textColor = .secondaryLabelColor
+        note.translatesAutoresizingMaskIntoConstraints = false
+
+        let content = NSView()
+        content.addSubview(picker)
+        content.addSubview(confirm)
+        content.addSubview(note)
+        NSLayoutConstraint.activate([
+            picker.topAnchor.constraint(equalTo: content.topAnchor, constant: 12),
+            picker.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
+            picker.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
+            confirm.topAnchor.constraint(equalTo: picker.bottomAnchor, constant: 10),
+            confirm.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
+            note.topAnchor.constraint(equalTo: confirm.bottomAnchor, constant: 8),
+            note.leadingAnchor.constraint(equalTo: content.leadingAnchor, constant: 12),
+            note.trailingAnchor.constraint(equalTo: content.trailingAnchor, constant: -12),
+            note.bottomAnchor.constraint(equalTo: content.bottomAnchor, constant: -10),
+        ])
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.delegate = self
+        popover.contentViewController = NSViewController()
+        popover.contentViewController?.view = content
+        popover.contentSize = NSSize(width: 260, height: 130)
+        schedulePopover = popover
+        popover.show(relativeTo: scheduleButton.bounds, of: scheduleButton, preferredEdge: .maxY)
+    }
+
+    @objc private func scheduleDatePickerConfirmed(_ sender: NSButton) {
+        guard let popover = schedulePopover,
+              let picker = popover.contentViewController?.view.subviews.first(where: { $0 is NSDatePicker })
+                as? NSDatePicker else { return }
+        let fireDate = picker.dateValue
+        popover.performClose(nil)
+        schedulePopover = nil
+        requestSchedule(at: fireDate)
+    }
+
+    /// Записать отложенную отправку: те же проверки, что у обычной отправки.
+    public func requestSchedule(at fireDate: Date) {
+        textView.confirmComposition()
+        guard isSendAllowed else { return }
+        if case .exceeded(_, let limit) = lengthState {
+            showNotice(Self.explanation(for: .messageTooLong(limit: limit)))
+            diagnostics?.record(.send, .info, "composer schedule blocked: message too long", code: Int64(limit))
+            delegate?.composerDidRefuseInput(.messageTooLong(limit: limit))
+            return
+        }
+        guard hasSendableContent else { return }
+        guard fireDate > Date() else {
+            showNotice(String(localized: "Pick a time in the future."))
+            return
+        }
+        completion.dismiss()
+        delegate?.composerDidRequestSchedule(text: textView.string, fireAt: fireDate)
+    }
+
     @objc private func cancelModePressed(_ sender: Any?) {
         delegate?.composerDidRequestCancelMode()
     }
@@ -881,7 +1025,8 @@ final class ComposerIconButton: NSButton {
 extension ComposerViewController: NSPopoverDelegate {
     /// Поповер закрылся сам (клик мимо, Escape) — забываем его.
     public func popoverDidClose(_ notification: Notification) {
-        guard (notification.object as? NSPopover) === emojiPopover else { return }
-        emojiPopover = nil
+        guard let popover = notification.object as? NSPopover else { return }
+        if popover === emojiPopover { emojiPopover = nil }
+        if popover === schedulePopover { schedulePopover = nil }
     }
 }

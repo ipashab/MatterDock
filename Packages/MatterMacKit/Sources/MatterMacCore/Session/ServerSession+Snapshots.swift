@@ -177,7 +177,8 @@ extension ServerSession {
             linkPreviewImages: capabilities.hasImageProxy == true)
         context.customEmojiEnabled = customEmojiEnabled
         let output = TimelineBuilder.build(window: window, store: store, directory: directory,
-                                           pending: pending.items(for: target), context: context,
+                                           pending: pending.items(for: target),
+                                           scheduled: scheduled.items(for: target), context: context,
                                            customEmoji: customEmoji)
         missingUsers.formUnion(output.missingUsers)
         wantCustomEmoji(output.missingEmojiNames)

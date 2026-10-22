@@ -149,6 +149,7 @@ extension ConversationController {
         case .attachmentsDisabled: "File attachments are disabled on this server."
         case .channelArchived: "This channel is archived. Your draft was kept."
         case .sessionClosed: "This session has ended."
+        case .fireDatePast: "Pick a time in the future."
         case .budget: "The limit for drafts or pending messages has been reached. Your draft was kept."
         }
     }
