@@ -267,12 +267,12 @@ public final class ComposerViewController: NSViewController {
         attachmentStrip.translatesAutoresizingMaskIntoConstraints = false
         attachmentStrip.heightAnchor.constraint(equalToConstant: ComposerAttachmentStrip.height).isActive = true
 
-        attachButton.image = NSImage(systemSymbolName: "paperclip", accessibilityDescription: "Attach Files")
+        attachButton.image = NSImage(systemSymbolName: "paperclip", accessibilityDescription: String(localized: "Attach Files"))
         attachButton.isBordered = false
         attachButton.target = self
         attachButton.action = #selector(chooseFiles(_:))
-        attachButton.setAccessibilityLabel("Attach Files")
-        attachButton.toolTip = "Attach Files"
+        attachButton.setAccessibilityLabel(String(localized: "Attach Files"))
+        attachButton.toolTip = String(localized: "Attach Files")
         attachButton.title = ""
         attachButton.imagePosition = .imageOnly
         attachButton.contentTintColor = .secondaryLabelColor
@@ -282,12 +282,12 @@ public final class ComposerViewController: NSViewController {
             $0.heightAnchor.constraint(equalToConstant: singleLineBoxHeight)
         }
         NSLayoutConstraint.activate(iconButtonHeightConstraints)
-        emojiButton.image = NSImage(systemSymbolName: "smiley", accessibilityDescription: "Emoji")
+        emojiButton.image = NSImage(systemSymbolName: "smiley", accessibilityDescription: String(localized: "Emoji"))
         emojiButton.isBordered = false
         emojiButton.target = self
         emojiButton.action = #selector(toggleEmojiPicker(_:))
-        emojiButton.setAccessibilityLabel("Emoji")
-        emojiButton.toolTip = "Emoji"
+        emojiButton.setAccessibilityLabel(String(localized: "Emoji"))
+        emojiButton.toolTip = String(localized: "Emoji")
         emojiButton.title = ""
         emojiButton.imagePosition = .imageOnly
         emojiButton.contentTintColor = .secondaryLabelColor
@@ -462,12 +462,12 @@ public final class ComposerViewController: NSViewController {
     /// Ширина — как у остальных иконок, высота — как у однострочного поля.
     private func configureScheduleButton() {
         scheduleButton.image = NSImage(systemSymbolName: "clock.arrow.circlepath",
-                                        accessibilityDescription: "Send Later")
+                                        accessibilityDescription: String(localized: "Send Later"))
         scheduleButton.isBordered = false
         scheduleButton.target = self
         scheduleButton.action = #selector(presentScheduleMenu(_:))
-        scheduleButton.setAccessibilityLabel("Send Later")
-        scheduleButton.toolTip = "Send Later"
+        scheduleButton.setAccessibilityLabel(String(localized: "Send Later"))
+        scheduleButton.toolTip = String(localized: "Send Later")
         scheduleButton.title = ""
         scheduleButton.imagePosition = .imageOnly
         scheduleButton.contentTintColor = .secondaryLabelColor

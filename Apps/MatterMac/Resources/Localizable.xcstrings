@@ -1101,12 +1101,56 @@
         }
       }
     },
+    "+%lld more participants": {
+      "localizations": {
+        "ru": {
+          "variations": {
+            "plural": {
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "и ещё %lld участника"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "и ещё %lld участников"
+                }
+              },
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "и ещё %lld участник"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "и ещё %lld участника"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "1 attachment": {
       "localizations": {
         "ru": {
           "stringUnit": {
             "state": "translated",
             "value": "1 вложение"
+          }
+        }
+      }
+    },
+    "1 draft": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 черновик"
           }
         }
       }
@@ -1725,6 +1769,16 @@
         }
       }
     },
+    "Bold": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Полужирный"
+          }
+        }
+      }
+    },
     "Bot": {
       "localizations": {
         "ru": {
@@ -1771,6 +1825,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "SSO через браузер"
+          }
+        }
+      }
+    },
+    "Bulleted List": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Маркированный список"
           }
         }
       }
@@ -2139,6 +2203,16 @@
         }
       }
     },
+    "Click to view the avatar": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нажмите, чтобы открыть аватар"
+          }
+        }
+      }
+    },
     "Clock display": {
       "localizations": {
         "ru": {
@@ -2175,6 +2249,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Закрыть результаты"
+          }
+        }
+      }
+    },
+    "Code": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Код"
           }
         }
       }
@@ -3231,6 +3315,50 @@
         }
       }
     },
+    "Heading": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Заголовок"
+          }
+        }
+      }
+    },
+    "Heading %lld": {
+      "localizations": {
+        "ru": {
+          "variations": {
+            "plural": {
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Заголовок %lld"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Заголовок %lld"
+                }
+              },
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Заголовок %lld"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "Заголовок %lld"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "Ignore @channel, @here and @all": {
       "localizations": {
         "ru": {
@@ -3271,6 +3399,46 @@
         }
       }
     },
+    "In 1 hour": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Через час"
+          }
+        }
+      }
+    },
+    "In 15 minutes": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Через 15 минут"
+          }
+        }
+      }
+    },
+    "In 30 minutes": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Через 30 минут"
+          }
+        }
+      }
+    },
+    "In reply to %1$@: %2$@": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "В ответ на %1$@: %2$@"
+          }
+        }
+      }
+    },
     "Interactive buttons in this message are not supported in MatterMac.": {
       "localizations": {
         "ru": {
@@ -3307,6 +3475,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Больше не существует или недоступно для вас."
+          }
+        }
+      }
+    },
+    "Italic": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Курсив"
           }
         }
       }
@@ -3467,6 +3645,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Светлая"
+          }
+        }
+      }
+    },
+    "Link": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ссылка"
           }
         }
       }
@@ -4443,6 +4631,16 @@
         }
       }
     },
+    "Numbered List": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Нумерованный список"
+          }
+        }
+      }
+    },
     "Objects": {
       "localizations": {
         "ru": {
@@ -4553,6 +4751,16 @@
         }
       }
     },
+    "Opens the quick switcher: jump to a chat, team channel or person": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Открывает быстрый переход: к чату, каналу команды или человеку"
+          }
+        }
+      }
+    },
     "Optional": {
       "localizations": {
         "ru": {
@@ -4629,6 +4837,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Персональный токен доступа"
+          }
+        }
+      }
+    },
+    "Pick Date & Time…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выбрать дату и время…"
+          }
+        }
+      }
+    },
+    "Pick a time in the future.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Выберите время в будущем."
           }
         }
       }
@@ -5271,6 +5499,26 @@
         }
       }
     },
+    "Save Avatar": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить аватар"
+          }
+        }
+      }
+    },
+    "Save Avatar…": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Сохранить аватар…"
+          }
+        }
+      }
+    },
     "Save Message": {
       "localizations": {
         "ru": {
@@ -5381,6 +5629,36 @@
         }
       }
     },
+    "Schedule": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запланировать"
+          }
+        }
+      }
+    },
+    "Scheduled for %@ — unsent if the app quits": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запланировано на %@ — не отправится при закрытии приложения"
+          }
+        }
+      }
+    },
+    "Scheduled messages are unsent if the app quits": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Запланированные сообщения исчезают при выходе из приложения"
+          }
+        }
+      }
+    },
     "Search": {
       "localizations": {
         "ru": {
@@ -5437,6 +5715,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Поиск каналов или людей"
+          }
+        }
+      }
+    },
+    "Search chats, team channels and people (⌘K)": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Поиск чатов, каналов команды и людей (⌘K)"
           }
         }
       }
@@ -5507,6 +5795,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Отправить (%@)"
+          }
+        }
+      }
+    },
+    "Send Later": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Отправить позже"
           }
         }
       }
@@ -6191,6 +6489,16 @@
         }
       }
     },
+    "Strikethrough": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Зачёркнутый"
+          }
+        }
+      }
+    },
     "Suggestions": {
       "localizations": {
         "ru": {
@@ -6257,6 +6565,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Системное сообщение"
+          }
+        }
+      }
+    },
+    "Team channels": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Каналы команды"
           }
         }
       }
@@ -7331,6 +7649,16 @@
         }
       }
     },
+    "Tomorrow at 9:00 AM": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Завтра в 9:00"
+          }
+        }
+      }
+    },
     "Too many failed attempts. The account is temporarily locked; contact your administrator if this persists.": {
       "localizations": {
         "ru": {
@@ -8181,6 +8509,16 @@
         }
       }
     },
+    "not joined": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "вы не участник"
+          }
+        }
+      }
+    },
     "person": {
       "localizations": {
         "ru": {
@@ -8247,120 +8585,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "⌘Return"
-          }
-        }
-      }
-    },
-    "In reply to %1$@: %2$@": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "В ответ на %1$@: %2$@"
-          }
-        }
-      }
-    },
-    "+%lld more participants": {
-      "localizations": {
-        "ru": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "и ещё %lld участник"
-                }
-              },
-              "few": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "и ещё %lld участника"
-                }
-              },
-              "many": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "и ещё %lld участников"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "и ещё %lld участника"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "not joined": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "вы не участник"
-          }
-        }
-      }
-    },
-    "Team channels": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Каналы команды"
-          }
-        }
-      }
-    },
-    "Search chats, team channels and people (⌘K)": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Поиск чатов, каналов команды и людей (⌘K)"
-          }
-        }
-      }
-    },
-    "Opens the quick switcher: jump to a chat, team channel or person": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Открывает быстрый переход: к чату, каналу команды или человеку"
-          }
-        }
-      }
-    },
-    "Save Avatar…": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Сохранить аватар…"
-          }
-        }
-      }
-    },
-    "Save Avatar": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Сохранить аватар"
-          }
-        }
-      }
-    },
-    "Click to view the avatar": {
-      "localizations": {
-        "ru": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Нажмите, чтобы открыть аватар"
           }
         }
       }
