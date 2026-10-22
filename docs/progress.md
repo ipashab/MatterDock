@@ -2703,3 +2703,45 @@ https://github.com/ipashab/MatterDock/releases/tag/v0.11.4 — установл�
 
 - Ждать подтверждение пользователя: аватарки у чипа «N ответов» (v0.11.4),
   пикер эмодзи с первого открытия (v0.11.3), карточка «В ответ на» (v0.11.2).
+
+## 2026-10-22 (7) — поиск чатов и людей: строка в сайдбаре, каналы команды в ⌘K (v0.11.5)
+
+Фича-репорт: «Не хватает поиска по названиям чатов — найти чат или человека
+сейчас значит листать список; хочу ввести название и перейти; и найти человека,
+чата с которым ещё нет».
+
+Разбор показал: поиск существовал (⌘K-свитчер по своим каналам и людям без
+DM, «Browse Channels», «New Message»), но весь спрятан за меню, а каналы
+команды без членства в ⌘K не находились вовсе. Probe живого сервера:
+`POST /teams/{id}/channels/search` (12 публичных по «AI»), `POST /channels/search`
+— 403 прав, `POST /users/search`/`GET /users/autocomplete` — работают.
+
+Реализация (`20052f9`, ADR 0046):
+- `quickSwitcherResults` — с двух символов серверный `searchChannels` по
+  выбранной команде: только публичные и не архивные, не состоящие в директории,
+  максимум 5 (`maximumUnjoinedSuggestions`); новая секция
+  `.teamChannels` («Каналы команды», подпись «вы не участник») — между своими и
+  людьми.
+- `QuickSwitchItem.requiresJoin`: открытие такого результата вступает
+  (`joinAndOpen`: `join_channel` → выбор), ошибка — inline. Fake `joinChannel`
+  теперь создаёт членство, как живой сервер.
+- Сайдбар: первая строка списка чатов — «Поиск» с бейджем ⌘K, открывает
+  свитчер.
+- l10n: «Каналы команды», «вы не участник», строки поля поиска.
+
+Верификация: `swift build` 0 warnings (DEVELOPER_DIR=Xcode — PATH-свит из
+CommandLineTools даёт Swift 6.1 против tools 6.2); новые тесты — Core
+(`searchListsUnjoinedTeamChannelsInOwnSection`,
+`unjoinedSuggestionsAreBoundedAndSkipMemberChannels`) и UI
+(`openingAnUnjoinedTeamChannelJoinsAndSelectsIt`); полный прогон 588 тестов
+зелёный (248+29+18+214+79); mediaViewer и SessionCache — единичные флаки,
+точечные перезапуски зелёные.
+
+Релиз v0.11.5 (build 9): Release universal (x86_64+arm64), подпись «MatterDock
+Dev» валидна, DMG 13 MB + ZIP 11 MB, тег запушен;
+https://github.com/ipashab/MatterDock/releases/tag/v0.11.5 — установлено в
+/Applications и запущено.
+
+Следующая задача: подтвердить у пользователя v0.11.5 (строка поиска, секция
+«Каналы команды», join по Enter) и ранее не подтверждённые v0.11.4 (аватарки
+треда), v0.11.3 (пикер эмодзи), v0.11.2 (карточка «В ответ на»).
