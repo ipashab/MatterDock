@@ -262,6 +262,15 @@ public struct PostPresentation: Hashable, Sendable {
     public let severity: PostSeverity?
     /// Последний ответ треда для чипа под пузырём (рендер: «N ответов · Имя: …»).
     public let threadPreview: ThreadReplyPreview?
+    /// Участники треда для аватарок у чипа «N ответов»: последние по времени,
+    /// свежий первым, уже срезанные до показа. Резолвятся из `participants`
+    /// корня (профили — через директорию, незнакомые — в `missingUsers`).
+    public let threadParticipants: [AuthorPresentation]
+    /// Сколько участников не влезло в аватарки (показывается баблом «+N»).
+    public let threadParticipantsOverflow: Int
+    /// Максимальное число аватарок у чипа (официальный клиент: 4; при большем
+    /// числе участников показывает 3 + бабл с остатком).
+    public static let maximumThreadParticipants = 4
     /// Процитированный пост («ответ на сообщение»): карточка над телом.
     public let replyContext: ReplyContext?
     /// Resolved custom emoji used in `body`: lowercase name → server emoji id. Names
@@ -275,7 +284,9 @@ public struct PostPresentation: Hashable, Sendable {
                 permalink: URL?, isSaved: Bool = false, editedAt: MattermostTimestamp? = nil,
                 linkPreview: LinkPreview? = nil, isLastInGroup: Bool = true,
                 severity: PostSeverity? = nil, threadPreview: ThreadReplyPreview? = nil,
-                replyContext: ReplyContext? = nil) {
+                replyContext: ReplyContext? = nil,
+                threadParticipants: [AuthorPresentation] = [],
+                threadParticipantsOverflow: Int = 0) {
         self.postID = postID
         self.pendingID = pendingID
         self.channelID = channelID
@@ -299,6 +310,8 @@ public struct PostPresentation: Hashable, Sendable {
         self.linkPreview = linkPreview
         self.severity = severity
         self.threadPreview = threadPreview
+        self.threadParticipants = threadParticipants
+        self.threadParticipantsOverflow = threadParticipantsOverflow
         self.replyContext = replyContext
     }
 }

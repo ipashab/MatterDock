@@ -341,6 +341,10 @@ public enum TimelineBuilder {
                                  missing: inout Set<UserID>, isLastInGroup: Bool = true,
                                  threadPreview: ThreadReplyPreview? = nil,
                                  replyContext: ReplyContext? = nil) -> PostPresentation {
+        // Аватарки участников у чипа «N ответов» (ADR 0045): показываем хвост списка
+        // свежими первыми; при переполнении у официального клиента 3 аватарки + «+N».
+        let (threadParticipants, threadOverflow) = threadParticipants(of: post, context: context,
+                                                                      directory: directory, missing: &missing)
         let body: MessageBody
         if post.isDeleted {
             body = .deleted
@@ -379,7 +383,24 @@ public enum TimelineBuilder {
             isSaved: directory.savedPosts.contains(post.id), editedAt: post.isEdited ? post.editAt : nil,
             linkPreview: visiblePreview(post, directory: directory, context: context),
             isLastInGroup: isLastInGroup, severity: severity(of: post),
-            threadPreview: threadPreview, replyContext: replyContext)
+            threadPreview: threadPreview, replyContext: replyContext,
+            threadParticipants: threadParticipants, threadParticipantsOverflow: threadOverflow)
+    }
+
+    /// Участники треда для аватарок у чипа: список `threadParticipantIDs`
+    /// хронологический, берём последних, свежий первым — как официальный
+    /// клиент. Больше лимита — 3 аватарки и счётчик остатка.
+    static func threadParticipants(of post: Post, context: TimelineBuildContext,
+                                    directory: DirectoryStore, missing: inout Set<UserID>)
+        -> (participants: [AuthorPresentation], overflow: Int) {
+        let ids = post.threadParticipantIDs ?? []
+        guard !ids.isEmpty else { return ([], 0) }
+        let cap = PostPresentation.maximumThreadParticipants
+        let shownCount = ids.count > cap ? cap - 1 : ids.count
+        let shown = ids.suffix(shownCount).reversed().map {
+            authorPresentation($0, post: nil, directory: directory, me: context.me, missing: &missing)
+        }
+        return (shown, ids.count - shownCount)
     }
 
     /// Полоса серьёзности читается из `props.severity` (warn/danger/ok) — рендер

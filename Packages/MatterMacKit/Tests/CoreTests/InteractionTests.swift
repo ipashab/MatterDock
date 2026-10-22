@@ -231,6 +231,35 @@ struct TimelineBuilderInteractionTests {
             .threadPreview?.authorName == "bob")
     }
 
+    @Test func threadChipCarriesParticipantAvatarsLatestFirst() throws {
+        var root = CoreFixtures.post(1, channel: channel.id, user: CoreFixtures.me.id)
+        root.replyCount = 4
+        // Хронологический порядок участников; незнакомый id уйдёт в missingUsers.
+        root.threadParticipantIDs = [CoreFixtures.bob.id, carol.id]
+        let output = build([root])
+        let row = try #require(posts(output).first { $0.postID == root.id })
+        #expect(row.threadParticipants.map(\.userID) == [carol.id, CoreFixtures.bob.id],
+                "свежий участник первым, порядок обратный хронологии")
+        #expect(row.threadParticipantsOverflow == 0)
+        #expect(output.missingUsers.contains(carol.id), "профиль незнакомого участника запрашивается")
+        // Больше четырёх участников — три аватарки и остаток (правило официального клиента: 3 + N).
+        var wide = CoreFixtures.post(2, channel: channel.id, user: CoreFixtures.me.id)
+        wide.replyCount = 7
+        wide.threadParticipantIDs = [CoreFixtures.me.id, CoreFixtures.bob.id, carol.id,
+                                    UserID(unchecked: CoreFixtures.id("u", 4)),
+                                    UserID(unchecked: CoreFixtures.id("u", 5)),]
+        let wideRow = try #require(posts(build([wide])).first { $0.postID == wide.id })
+        #expect(wideRow.threadParticipants.count == 3, "при переполнении остаётся три аватарки")
+        #expect(wideRow.threadParticipantsOverflow == 2)
+        #expect(wideRow.threadParticipants.first?.userID == UserID(unchecked: CoreFixtures.id("u", 5)),
+                "показаны самые свежие")
+        // Пустой список и отсутствие поля не рождают аватарок.
+        var plain = CoreFixtures.post(3, channel: channel.id, user: CoreFixtures.me.id)
+        plain.replyCount = 1
+        plain.threadParticipantIDs = []
+        #expect(posts(build([plain])).first { $0.postID == plain.id }?.threadParticipants.isEmpty == true)
+    }
+
     @Test func replyContextBuiltFromQuotedPost() throws {
         let root = CoreFixtures.post(1, channel: channel.id, user: CoreFixtures.me.id)
         let quoted = CoreFixtures.post(2, channel: channel.id, user: CoreFixtures.bob.id)

@@ -20,6 +20,9 @@ public enum PostDecodingLimits {
     /// Text of a quote embed kept: the card renders a 96-char snippet, the full
     /// quoted post is never displayed.
     public static let maximumQuotedMessageBytes = 2 * 1_024
+    /// `participants` entries kept per root post (avatars render the last few;
+    /// the cap protects the store from a hostile page).
+    public static let maximumThreadParticipants = 64
 }
 
 /// `Post` as sent by the server. Decodes directly into the domain value; nothing else
@@ -37,7 +40,8 @@ public struct PostWire: Decodable, Sendable {
         case id, channel_id, user_id, root_id, original_id, message, message_source, type
         case create_at, update_at, edit_at, delete_at, is_pinned, file_ids, pending_post_id
         case has_reactions, reply_count, last_reply_at, props, metadata
-    }
+        case participants
+        }
 
     public init(from decoder: any Decoder) throws {
         let c = try decoder.container(keyedBy: Keys.self)
@@ -93,9 +97,38 @@ public struct PostWire: Decodable, Sendable {
         )
         post.customEmojis = metadata?.emojis ?? []
         post.quotedPost = metadata?.quotedPost
+        post.threadParticipantIDs = Self.threadParticipants(from: c)
         self.post = post
         self.isEditHistoryRow = !((try? c.decodeIfPresent(String.self, forKey: .original_id)) ?? "").isEmpty
         self.messageTruncated = truncated
+    }
+
+    /// Участники треда из верхнего уровня `participants` (только у корней на CRT-странице
+    /// канала): сервер кладёт объекты-пользователи с единственным значимым полем `id`.
+    /// Битые элементы пропускаются, id дедупятся, список ограничен.
+    static func threadParticipants(from c: KeyedDecodingContainer<Keys>) -> [UserID]? {
+        guard let raw = try? c.decodeIfPresent(LossyArray<ThreadParticipantWire>.self, forKey: .participants) else {
+            return nil
+        }
+        var seen = Set<UserID>()
+        var ids: [UserID] = []
+        for element in raw.elements where seen.insert(element.id).inserted {
+            ids.append(element.id)
+            if ids.count == PostDecodingLimits.maximumThreadParticipants { break }
+        }
+        return ids
+    }
+}
+
+/// Элемент массива `participants`: объект-пользователь, у которого заполнен только `id`.
+struct ThreadParticipantWire: Decodable, Sendable {
+    let id: UserID
+
+    enum Keys: String, CodingKey { case id }
+
+    init(from decoder: any Decoder) throws {
+        let c = try decoder.container(keyedBy: Keys.self)
+        id = try c.requiredID(UserID.self, .id)
     }
 }
 

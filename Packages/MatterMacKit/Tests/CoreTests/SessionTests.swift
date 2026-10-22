@@ -332,6 +332,33 @@ struct SessionRaceTests {
         #expect(await h.session.store.post(root.id)?.message == "")
     }
 
+    @Test func liveReplyGrowsThreadParticipantsOnRoot() async {
+        // Живой ответ делает автора участником треда: аватарки у чипа «N ответов»
+        // растут без перезагрузки страницы (ADR 0045).
+        let h = await SessionHarness()
+        await h.openChannel()
+        let root = CoreFixtures.post(1, channel: h.channel.id)
+        let reply = CoreFixtures.post(99, channel: h.channel.id, user: CoreFixtures.me.id, rootID: root.id)
+        await h.realtime.push(.posted(PostedEvent(post: reply, channelType: .open, teamID: nil,
+                                                   mentionsCurrentUser: false, setOnline: true)))
+        #expect(await eventually { await h.session.store.post(root.id)?.threadParticipantIDs != nil })
+        var another = CoreFixtures.post(98, channel: h.channel.id, user: CoreFixtures.bob.id, rootID: root.id)
+        another.createAt = MattermostTimestamp(milliseconds: reply.createAt.milliseconds + 10)
+        await h.realtime.push(.posted(PostedEvent(post: another, channelType: .open, teamID: nil,
+                                                   mentionsCurrentUser: false, setOnline: true)))
+        #expect(await eventually {
+            await h.session.store.post(root.id)?.threadParticipantIDs == [CoreFixtures.me.id, CoreFixtures.bob.id]
+        })
+        // Повторный ответ того же автора не дублирует участника.
+        var again = CoreFixtures.post(97, channel: h.channel.id, user: CoreFixtures.bob.id, rootID: root.id)
+        again.createAt = MattermostTimestamp(milliseconds: another.createAt.milliseconds + 10)
+        await h.realtime.push(.posted(PostedEvent(post: again, channelType: .open, teamID: nil,
+                                                  mentionsCurrentUser: false, setOnline: true)))
+        _ = await eventually { await h.realtime.queuedCount == 0 }
+        try? await Task.sleep(for: .milliseconds(30))
+        #expect(await h.session.store.post(root.id)?.threadParticipantIDs == [CoreFixtures.me.id, CoreFixtures.bob.id])
+    }
+
     @Test func duplicatePostedEventsDoNotDuplicateRows() async {
         let h = await SessionHarness()
         await h.openChannel()

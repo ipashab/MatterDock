@@ -65,6 +65,11 @@ struct MessageRowLayout: Equatable {
     var reactions: [CGRect] = []
     var reactionOverflow: CGRect?
     var replies: CGRect?
+    /// Аватарки участников треда у чипа «N ответов» (ADR 0045): кадры параллельны
+    /// `PostPresentation.threadParticipants`, идут после текста чипа.
+    var threadAvatars: [CGRect] = []
+    /// Бабл «+N» за аватарками, когда участников больше показанного.
+    var threadOverflow: CGRect?
     var pending: PendingLayout?
     /// Пузырь (ADR 0041): nil — flat-сетка или сервисная строка.
     var bubble: BubbleLayout?
@@ -95,6 +100,11 @@ struct TimelineRowMetrics {
     static let fileChipMaximumWidth: CGFloat = 320
     static let chipSpacing: CGFloat = 4
     static let spinnerSize: CGFloat = 16
+    /// Аватарка участника треда у чипа «N ответов» (ADR 0045): круг 16 pt,
+    /// шаг 12 pt (наложение кругов), старт через 8 pt после текста чипа.
+    static let threadAvatarSize: CGFloat = 16
+    static let threadAvatarStep: CGFloat = 12
+    static let threadAvatarLeading: CGFloat = 8
     static let maximumDisplayedFiles = 10
     static let maximumDisplayedReactions = 40
     static let minimumContentWidth: CGFloat = 80
@@ -160,6 +170,28 @@ struct TimelineRowMetrics {
         let title = post.threadPreview.map { TimelineStrings.threadChip(post.replyCount, preview: $0) }
             ?? TimelineStrings.replies(post.replyCount)
         return NSAttributedString(string: title, attributes: [.font: fonts.metaBold])
+    }
+
+    /// Кадры аватарок участников треда (ADR 0045): за текстом чипа (chipWidth),
+    /// свежие первыми, последним — бабл «+N». Высота чипа не меняется.
+    func threadAvatarFrames(for post: PostPresentation, chipX: CGFloat, chipWidth: CGFloat, y: CGFloat)
+        -> (avatars: [CGRect], overflow: CGRect?, width: CGFloat) {
+        var x = chipX + chipWidth + Self.threadAvatarLeading
+        let avatarY = y + (Self.buttonHeight - Self.threadAvatarSize) / 2
+        var frames: [CGRect] = []
+        for _ in post.threadParticipants {
+            frames.append(CGRect(x: x, y: avatarY, width: Self.threadAvatarSize, height: Self.threadAvatarSize))
+            x += Self.threadAvatarStep
+        }
+        var overflow: CGRect? = nil
+        if post.threadParticipantsOverflow > 0 {
+            let text = NSAttributedString(string: "+\(post.threadParticipantsOverflow)",
+                                          attributes: [.font: fonts.meta])
+            let width = max(Self.threadAvatarSize, DrawnText.width(of: text) + 6)
+            overflow = CGRect(x: x, y: avatarY, width: width, height: Self.threadAvatarSize)
+            x += width
+        }
+        return (frames, overflow, x - chipX - chipWidth)
     }
 
     /// Ширина карточки «ответ на сообщение» во внутреннем пространстве пузыря:
@@ -457,10 +489,21 @@ struct TimelineRowMetrics {
         if post.replyCount > 0 {
             y += Self.componentSpacing
             // Чип треда с превью последнего ответа (рендер: «N ответов · Имя: …»),
-            // hug-ширины, прижат к краю колонки по стороне автора.
+            // hug-ширины, прижат к краю колонки по стороне автора; следом —
+            // аватарки участников и бабл остатка (ADR 0045).
             let chipWidth = min(columnWidth, DrawnText.width(of: threadChipText(for: post)) + 20)
-            let chipX = own ? columnRight - chipWidth : columnLeft
-            layout.replies = CGRect(x: chipX, y: y, width: chipWidth, height: Self.buttonHeight)
+            let avatars = threadAvatarFrames(for: post, chipX: columnLeft, chipWidth: chipWidth, y: y)
+            if chipWidth + avatars.width <= columnWidth {
+                let runWidth = chipWidth + avatars.width
+                let runX = own ? columnRight - runWidth : columnLeft
+                layout.replies = CGRect(x: runX, y: y, width: chipWidth, height: Self.buttonHeight)
+                let placed = threadAvatarFrames(for: post, chipX: runX, chipWidth: chipWidth, y: y)
+                layout.threadAvatars = placed.avatars
+                layout.threadOverflow = placed.overflow
+            } else {
+                let chipX = own ? columnRight - chipWidth : columnLeft
+                layout.replies = CGRect(x: chipX, y: y, width: chipWidth, height: Self.buttonHeight)
+            }
             y += Self.buttonHeight
         }
 
@@ -586,6 +629,19 @@ struct TimelineRowMetrics {
         if post.replyCount > 0 {
             y += Self.componentSpacing
             layout.replies = CGRect(x: contentX, y: y, width: contentWidth, height: Self.buttonHeight)
+            // Аватарки участников — сразу за видимым текстом чипа (ADR 0045);
+            // не влезают в строку — не показываем, высота ряда не меняется.
+            let textWidth = min(contentWidth, DrawnText.width(of: threadChipText(for: post)) + 20)
+            if contentWidth - textWidth > Self.threadAvatarSize + Self.threadAvatarLeading {
+                let placed = threadAvatarFrames(for: post, chipX: contentX, chipWidth: textWidth, y: y)
+                let columnMaxX = contentX + contentWidth
+                let inBounds = placed.avatars.allSatisfy { $0.maxX <= columnMaxX }
+                    && (placed.overflow?.maxX ?? 0) <= columnMaxX
+                if inBounds {
+                    layout.threadAvatars = placed.avatars
+                    layout.threadOverflow = placed.overflow
+                }
+            }
             y += Self.buttonHeight
         }
 

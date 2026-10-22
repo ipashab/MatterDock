@@ -256,16 +256,23 @@ extension ServerSession {
                 windows[threadTarget] = window
             }
             // A replayed or REST-overlapping copy of a known reply must not count twice.
-            if !alreadyRetained { updateThreadRoot(root, newReplyAt: post.createAt) }
+            if !alreadyRetained { updateThreadRoot(root, newReplyAt: post.createAt, participant: post.userID) }
         }
         store.collectUnreferenced()
         enforceRetention()
     }
 
-    func updateThreadRoot(_ root: PostID, newReplyAt: MattermostTimestamp? = nil) {
+    func updateThreadRoot(_ root: PostID, newReplyAt: MattermostTimestamp? = nil, participant: UserID? = nil) {
         guard let newReplyAt, var post = store.entry(root)?.post else { return }
         post.replyCount += 1
         post.lastReplyAt = max(post.lastReplyAt, newReplyAt)
+        // Свежий ответ делает автора участником треда: аватарки у чипа «N ответов»
+        // растут вживую, как в официальном клиенте. Список ограничен декодным лимитом.
+        if let participant, post.threadParticipantIDs?.contains(participant) != true {
+            var ids = post.threadParticipantIDs ?? []
+            if ids.count < PostDecodingLimits.maximumThreadParticipants { ids.append(participant) }
+            post.threadParticipantIDs = ids
+        }
         // Keep updateAt monotonic so an older snapshot cannot roll the count back.
         post.updateAt = max(post.updateAt, newReplyAt)
         store.upsert(post)

@@ -525,6 +525,10 @@ public struct Post: Hashable, Sendable, Identifiable, Codable {
     /// Custom emoji used by the message or its reactions (`metadata.emojis`), bounded
     /// at decode time. Saves a name lookup; empty when the server sent none.
     public var customEmojis: [CustomEmoji] = []
+    /// Участники треда (только у корня): верхний уровень `participants` CRT-страницы
+    /// канала — объекты-пользователи, из которых читается один `id`. Порядок хронологический,
+    /// ограничен декодером. `nil` — сервер не присылал (обычный пост, тред-окно, realtime).
+    public var threadParticipantIDs: [UserID]?
 
     public init(id: PostID, channelID: ChannelID, userID: UserID, rootID: PostID? = nil, message: String,
                 type: PostType = .normal, createAt: MattermostTimestamp,

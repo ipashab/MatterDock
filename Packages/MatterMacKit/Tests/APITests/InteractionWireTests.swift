@@ -107,8 +107,30 @@ struct InteractionWireTests {
         #expect(deleted.quotedPost?.isDeleted == true && deleted.quotedPost?.isSystem == true)
     }
 
-    @Test func decodesChannelUnreadState() throws {
-        let json = #"""
+    @Test func threadParticipantsDecodeFromChannelPageTopLevel() throws {
+        // CRT-страница канала несёт участников треда на верхнем уровне поста:
+        // объекты-пользователи, у которых заполнен только `id`.
+        let decoded = try post(#","reply_count":2,"participants":[{"id":"u2xxxxxxxxxxxxxxxxxxxxxxxx","delete_at":0,"username":""},{"id":"u3xxxxxxxxxxxxxxxxxxxxxxxx"}]"#)
+        #expect(decoded.threadParticipantIDs ==
+                [UserID(unchecked: "u2xxxxxxxxxxxxxxxxxxxxxxxx"), UserID(unchecked: "u3xxxxxxxxxxxxxxxxxxxxxxxx")])
+        // Поле не прислали — nil («информации нет»), а не пустой список.
+        #expect(try post(#","reply_count":3"#).threadParticipantIDs == nil)
+        // Пустой массив — участников нет.
+        #expect(try post(#","participants":[]"#).threadParticipantIDs == [])
+        // Дубликаты схлопываются, порядок сохраняется.
+        let dedup = try post(#","participants":[{"id":"u2xxxxxxxxxxxxxxxxxxxxxxxx"},{"id":"u2xxxxxxxxxxxxxxxxxxxxxxxx"},{"id":"u3xxxxxxxxxxxxxxxxxxxxxxxx"}]"#)
+        #expect(dedup.threadParticipantIDs == [UserID(unchecked: "u2xxxxxxxxxxxxxxxxxxxxxxxx"),
+                                                UserID(unchecked: "u3xxxxxxxxxxxxxxxxxxxxxxxx")])
+        // Битый элемент теряется, остальные доезжают.
+        let lossy = try post(#","participants":[{"id":"","delete_at":0},{"id":"u9xxxxxxxxxxxxxxxxxxxxxxxx"}]"#)
+        #expect(lossy.threadParticipantIDs == [UserID(unchecked: "u9xxxxxxxxxxxxxxxxxxxxxxxx")])
+        // Лимит хранения: сверх 64 участников не удерживаем.
+        let over = (0..<70).map { "u" + String(format: "%025d", $0) }
+        let json = #","participants":"# + "[" + over.map { #"{"id":"\#($0)"}"# }.joined(separator: ",") + "]"
+        #expect(try post(json).threadParticipantIDs == over.prefix(64).map { UserID(unchecked: $0) })
+    }
+
+    @Test func decodesChannelUnreadState() throws {        let json = #"""
             {"team_id":"t1xxxxxxxxxxxxxxxxxxxxxxxx","user_id":"u1xxxxxxxxxxxxxxxxxxxxxxxx","channel_id":"c1xxxxxxxxxxxxxxxxxxxxxxxx",
              "msg_count":7,"mention_count":1,"mention_count_root":1,"urgent_mention_count":0,"msg_count_root":5,
              "last_viewed_at":1999}

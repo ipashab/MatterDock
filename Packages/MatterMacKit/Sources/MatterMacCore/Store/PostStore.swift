@@ -90,6 +90,10 @@ public struct PostStore: Sendable {
             if merged.props.quotePostID == nil, let quotedID = incoming.props.quotePostID {
                 merged.props.quotePostID = quotedID
             }
+            if merged.threadParticipantIDs == nil, let ids = incoming.threadParticipantIDs {
+                merged.threadParticipantIDs = ids
+            }
+
             if merged == stored { return .unchanged }
         } else {
             merged = incoming
@@ -102,6 +106,9 @@ public struct PostStore: Sendable {
                 merged.quotedPost = stored.quotedPost
                 merged.props.quotePostID = stored.props.quotePostID
             }
+            // Список участников приносят только CRT-страницы канала; копия без него
+            // (since-окно, тред-запрос) не должна терять уже известные аватарки.
+            if merged.threadParticipantIDs == nil { merged.threadParticipantIDs = stored.threadParticipantIDs }
         }
         if merged.pendingPostID == nil { merged.pendingPostID = stored.pendingPostID }
         let reparse = merged.message != stored.message || merged.isDeleted != stored.isDeleted

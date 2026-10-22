@@ -89,6 +89,30 @@ struct PostStoreTests {
         #expect(store.post(newer.id)?.props.quotePostID == PostID(unchecked: CoreFixtures.id("q", 9)))
     }
 
+    @Test func equalRevisionBackfillsAndNewerKeepsThreadParticipants() throws {
+        var store = makeStore()
+        // Кэш-сид старого формата: участников нет. Серверная CRT-страница доносит
+        // список при том же updateAt — backfill, не игнор.
+        let seeded = CoreFixtures.post(1, channel: channel)
+        store.upsert(seeded)
+        var page = seeded
+        page.threadParticipantIDs = [CoreFixtures.bob.id]
+        #expect(store.upsert(page) == .updated, "участники меняют запись даже при том же updateAt")
+        #expect(store.post(page.id)?.threadParticipantIDs == [CoreFixtures.bob.id])
+        // Копия новее без списка (since-окно, realtime) не теряет участников; со
+        // списком — серверная страница обновляет их.
+        var edit = page
+        edit.updateAt = MattermostTimestamp(milliseconds: page.updateAt.milliseconds + 500)
+        edit.threadParticipantIDs = nil
+        #expect(store.upsert(edit) == .updated)
+        #expect(store.post(edit.id)?.threadParticipantIDs == [CoreFixtures.bob.id])
+        var refreshed = page
+        refreshed.updateAt = MattermostTimestamp(milliseconds: edit.updateAt.milliseconds + 500)
+        refreshed.threadParticipantIDs = [CoreFixtures.bob.id, CoreFixtures.me.id]
+        #expect(store.upsert(refreshed) == .updated)
+        #expect(store.post(refreshed.id)?.threadParticipantIDs == [CoreFixtures.bob.id, CoreFixtures.me.id])
+    }
+
     @Test func pendingPostIDIsPreservedWhenFetchedCopyLacksIt() {
         var store = makeStore()
         var post = CoreFixtures.post(1, channel: channel)

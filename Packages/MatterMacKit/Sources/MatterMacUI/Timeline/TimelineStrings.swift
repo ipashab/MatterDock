@@ -129,6 +129,10 @@ enum TimelineStrings {
 
     static func moreReactions(_ count: Int) -> String { String(localized: "+\(count) more") }
     static func moreFiles(_ count: Int) -> String { String(localized: "+\(count) more files") }
+    /// Бабл «+N» у аватарок участников треда (a11y-подпись).
+    static func moreThreadParticipants(_ count: Int) -> String {
+        String(localized: "+\(count) more participants")
+    }
 
     static func historyStart(_ name: String) -> String {
         String(localized: "This is the beginning of \(name).")

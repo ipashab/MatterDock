@@ -8260,6 +8260,40 @@
           }
         }
       }
+    },
+    "+%lld more participants": {
+      "localizations": {
+        "ru": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "и ещё %lld участник"
+                }
+              },
+              "few": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "и ещё %lld участника"
+                }
+              },
+              "many": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "и ещё %lld участников"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "и ещё %lld участника"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "version": "1.0"

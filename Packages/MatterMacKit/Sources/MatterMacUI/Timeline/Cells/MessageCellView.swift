@@ -101,6 +101,10 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
     private var avatarRequest: TimelineImageRequest?
     private var emojiRequests: Set<TimelineImageRequest> = []
     private var thumbnailRequests: [TimelineImageRequest: Int] = [:]
+    /// Аватарки участников треда у чипа «N ответов» (ADR 0045): запрос → индекс
+    /// в пуле; последним кружком может быть бабл «+N».
+    private var threadAvatarRequests: [TimelineImageRequest: Int] = [:]
+    private var threadAvatarViews: [AvatarView] = []
     /// Requests registered with the host that have not been satisfied yet.
     private var outstandingRequests: Set<TimelineImageRequest> = []
 
@@ -284,6 +288,7 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
                 self.host?.perform(.openThread(root: root))
             }
         }
+        configureThreadAvatars(post: post)
 
         configurePending(post: post, fonts: fonts)
         setAccessibilityLabel(TimelineStrings.accessibilityLabel(for: post))
@@ -296,6 +301,47 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
             }
         })
         needsLayout = true
+    }
+
+    /// Аватарки участников треда у чипа «N ответов» (ADR 0045): контент и картинки;
+    /// кадры проставляет `layout()` из `layout.threadAvatars`, последним кружком
+    /// может идти бабл «+N». Клик — как у чипа, открывает тред.
+    private func configureThreadAvatars(post: PostPresentation) {
+        threadAvatarRequests.removeAll()
+        for (index, participant) in post.threadParticipants.enumerated() {
+            let view = threadAvatar(at: index)
+            view.isHidden = false
+            view.initials = AvatarView.initials(for: participant.displayName)
+            view.tint = TimelinePalette.avatarTint(for: participant.userID.rawValue)
+            view.setAccessibilityLabel(TimelineStrings.avatarAccessibility(name: participant.displayName))
+            view.onPress = { [weak self] in self?.openThreadFromChip() }
+            let request = TimelineImageRequest.avatar(participant.userID, revision: participant.avatarRevision)
+            threadAvatarRequests[request] = index
+            view.image = resolveImage(request)
+        }
+        if post.threadParticipantsOverflow > 0 {
+            let view = threadAvatar(at: post.threadParticipants.count)
+            view.isHidden = false
+            view.initials = "+\(post.threadParticipantsOverflow)"
+            view.tint = .systemGray
+            view.setAccessibilityLabel(TimelineStrings.moreThreadParticipants(post.threadParticipantsOverflow))
+            view.onPress = { [weak self] in self?.openThreadFromChip() }
+            view.image = nil
+        }
+    }
+
+    private func openThreadFromChip() {
+        guard let post, let root = post.rootID ?? post.postID else { return }
+        host?.perform(.openThread(root: root))
+    }
+
+    private func threadAvatar(at index: Int) -> AvatarView {
+        while threadAvatarViews.count <= index {
+            let view = AvatarView(frame: .zero)
+            addSubview(view)
+            threadAvatarViews.append(view)
+        }
+        return threadAvatarViews[index]
     }
 
     static func timeToolTip(_ post: PostPresentation) -> String {
@@ -568,6 +614,9 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
         if let index = thumbnailRequests[request], index < thumbnailViews.count {
             thumbnailViews[index].setImage(image)
         }
+        if let index = threadAvatarRequests[request], index < threadAvatarViews.count {
+            threadAvatarViews[index].image = image
+        }
     }
 
     /// Re-queries images (e.g. after a backing-scale change).
@@ -578,6 +627,9 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
         if let request = linkPreviewRequest { linkPreviewView?.setImage(resolveImage(request)) }
         for (request, index) in thumbnailRequests where index < thumbnailViews.count {
             thumbnailViews[index].setImage(resolveImage(request))
+        }
+        for (request, index) in threadAvatarRequests where index < threadAvatarViews.count {
+            threadAvatarViews[index].image = resolveImage(request)
         }
     }
 
@@ -608,6 +660,7 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
         avatarView.image = nil
         for request in emojiRequests { setEmojiImage(nil, for: request) }
         for view in thumbnailViews { view.setImage(nil) }
+        for view in threadAvatarViews { view.image = nil }
         linkPreviewView?.setImage(nil)
         if let host {
             for request in outstandingRequests { host.unregisterImageDemand(request) }
@@ -651,6 +704,15 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
         threadContextLabel?.attributedText = NSAttributedString()
         replyContextCard?.resetCard()
         replyContextCard?.isHidden = true
+        threadAvatarRequests.removeAll()
+        for view in threadAvatarViews {
+            view.isHidden = true
+            view.image = nil
+            view.initials = ""
+            view.tint = .systemGray
+            view.onPress = nil
+            view.setAccessibilityLabel(nil)
+        }
         for button in [showMoreButton, repliesButton, retryButton, discardButton] {
             button?.reset()
             button?.isHidden = true
@@ -723,6 +785,17 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
         if let frame = layout.replies, let button = repliesButton {
             button.frame = CGRect(x: frame.minX, y: frame.minY, width: min(frame.width, button.fittingWidth + 4),
                                   height: frame.height)
+        }
+        // Аватарки участников треда (ADR 0045): кадры из layout; пул больше
+        // показанного скрыт.
+        let threadShown = layout.threadAvatars.count + (layout.threadOverflow != nil ? 1 : 0)
+        for (index, view) in threadAvatarViews.enumerated() {
+            view.isHidden = index >= threadShown
+            if index < layout.threadAvatars.count {
+                view.frame = layout.threadAvatars[index]
+            } else if let overflow = layout.threadOverflow, index == layout.threadAvatars.count {
+                view.frame = overflow
+            }
         }
         if let pending = layout.pending {
             if let frame = pending.spinner { pendingSpinner?.frame = frame }

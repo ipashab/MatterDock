@@ -24,14 +24,17 @@ struct BubbleLayoutTests {
                                                     isCollapsed: false),
                       files: [FileInfo] = [], reactions: [ReactionGroup] = [], replyCount: Int = 0,
                       sendState: SendState? = nil, showsThreadContext: Bool = false,
-                      replyContext: ReplyContext? = nil) -> PostPresentation {
+                      replyContext: ReplyContext? = nil,
+                      threadParticipants: [AuthorPresentation] = [],
+                      overflowCount: Int = 0) -> PostPresentation {
         let presentation = PostPresentation(
             postID: PostID(unchecked: "p1"), pendingID: nil, channelID: CoreFixtures.channel(1).id, rootID: nil,
             author: author(own: own), createdAt: MattermostTimestamp(milliseconds: 1_700_000_000_000),
             isContinuation: continuation, body: body, isEdited: edited, isPinned: false, files: files,
             reactions: reactions, replyCount: replyCount, showsThreadContext: showsThreadContext,
             sendState: sendState, actions: .none, permalink: nil, isLastInGroup: last,
-            replyContext: replyContext)
+            replyContext: replyContext,
+            threadParticipants: threadParticipants, threadParticipantsOverflow: overflowCount)
         return presentation
     }
 
@@ -82,6 +85,40 @@ struct BubbleLayoutTests {
         #expect(abs(flat.height - plain.height) >= metrics.replyContextHeight,
                 "строка выросла на высоту карточки")
         #expect(plain.replyContext == nil)
+    }
+
+    @Test func threadChipAvatarsFollowChipAndKeepRowHeight() {
+        // Аватарки участников (ADR 0045): идут за текстом чипа с наложением,
+        // вертикально внутри строки чипа, высота ряда не растёт.
+        let layout = metrics.messageLayout(
+            for: post(own: false, replyCount: 3, threadParticipants: [author(own: false), author(own: true)],
+                      overflowCount: 2),
+            width: 400, bodyHeight: 20, renderer: MessageRenderer(), style: .bubble)
+        let plain = metrics.messageLayout(for: post(own: false, replyCount: 3), width: 400,
+                                          bodyHeight: 20, renderer: MessageRenderer(), style: .bubble)
+        #expect(plain.threadAvatars.isEmpty && plain.threadOverflow == nil)
+        let chip = layout.replies!
+        #expect(layout.threadAvatars.count == 2)
+        let first = layout.threadAvatars[0]
+        #expect(abs(first.minX - (chip.maxX + TimelineRowMetrics.threadAvatarLeading)) < 0.5,
+                "первая аватарка сразу за текстом чипа")
+        #expect(abs(layout.threadAvatars[1].minX - (first.minX + TimelineRowMetrics.threadAvatarStep)) < 0.5,
+                "круги идут с шагом-наложением")
+        #expect(abs(first.midY - chip.midY) < 0.5, "аватарки по центру строки чипа")
+        let overflow = layout.threadOverflow!
+        #expect(abs(overflow.minX - (layout.threadAvatars[1].minX + TimelineRowMetrics.threadAvatarStep)) < 0.5,
+                "бабл «+N» идёт тем же шагом-наложением")
+        #expect(abs(layout.height - plain.height) < 0.5, "высота ряда не меняется")
+        #expect(overflow.maxX < 400 - TimelineRowMetrics.horizontalInset, "всё внутри колонки")
+        // Flat-режим: аватарки тоже за текстом чипа, высота не тронута.
+        let flat = metrics.messageLayout(
+            for: post(own: false, replyCount: 3, threadParticipants: [author(own: false)]),
+            width: 800, bodyHeight: 20, renderer: MessageRenderer(), style: .flat)
+        let flatPlain = metrics.messageLayout(for: post(own: false, replyCount: 3), width: 800,
+                                              bodyHeight: 20, renderer: MessageRenderer(), style: .flat)
+        #expect(flat.threadAvatars.count == 1)
+        #expect(abs(flat.height - flatPlain.height) < 0.5)
+        #expect(flat.threadAvatars[0].midX < flat.replies!.maxX)
     }
 
     @Test func sidesAndCorners() {
