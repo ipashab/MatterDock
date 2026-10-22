@@ -80,6 +80,24 @@ final class ConversationController: NSViewController, DraftProviding, ComposerVi
         // System (Unicode) emoji only; custom emoji keep rendering as `:name:`.
         timeline.emojiLookup = { EmojiCatalog.system.glyph(for: $0) }
         composer.delegate = self
+        // Эмодзи в поле ввода: пикер с недавними реакциями и кастомными эмодзи
+        // модели; выбор композер вставляет сам. onPick композер ставит после.
+        composer.emojiPickerProvider = { [weak self] in
+            let picker = ReactionPickerViewController(recent: self?.timeline.snapshot?.recentReactions ?? [])
+            guard let self else { return picker }
+            let channel = self.target.channelID
+            picker.customLimit = self.environment.budget.customEmojiPickerEntries
+            picker.customPage = { [weak model = self.model] page, query in
+                guard let model, !model.isDetached else { return [] }
+                return await model.session.customEmojiPage(page: page, query: query)
+            }
+            picker.customImage = { [weak model = self.model] id in
+                guard let model, !model.isDetached, let pipeline = model.app?.images else { return nil }
+                return await model.session.timelineImage(.customEmoji(id: id), channel: channel,
+                                                         maxPixelSize: 64, pipeline: pipeline)
+            }
+            return picker
+        }
         loadDraft()
         attachDraftProvider()
         bindDisplaySettings()

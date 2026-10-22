@@ -94,6 +94,8 @@ public final class ComposerViewController: NSViewController {
     let textView = ComposerTextView.make()
     let completion = ComposerCompletionController()
     let attachmentStrip = ComposerAttachmentStrip()
+    /// Панель форматирования над полем; собирается в `loadView`.
+    private(set) var toolbar: ComposerToolbarView!
 
     /// Coalescing window for `composerDraftDidChange()` (≤ 4 Hz).
     var draftChangeInterval: Duration = .milliseconds(250)
@@ -107,6 +109,17 @@ public final class ComposerViewController: NSViewController {
     private let placeholderLabel = PassthroughLabel(labelWithString: "")
     let sendButton = ComposerIconButton()
     let attachButton = ComposerIconButton()
+    /// Эмодзи-кнопка в строке ввода: открывает пикер над композером. Видна,
+    /// только когда хост настроил провайдер пикера (недавние, кастомные эмодзи).
+    let emojiButton = ComposerIconButton()
+    /// Пикер эмодзи для поля ввода; nil — кнопка скрыта.
+    var emojiPickerProvider: (() -> ReactionPickerViewController)? {
+        didSet { if isViewLoaded { emojiButton.isHidden = emojiPickerProvider == nil } }
+    }
+    private var emojiPopover: NSPopover?
+    var isEmojiPickerShown: Bool { emojiPopover != nil }
+    /// Только для тестов: открытый поповер пикера.
+    var emojiPopoverForTesting: NSPopover? { emojiPopover }
     /// Both icon buttons are exactly as tall as the one-line input box and bottom-aligned
     /// with it: centered on a single line, beside the last line when the box grows.
     private var iconButtonHeightConstraints: [NSLayoutConstraint] = []
@@ -210,6 +223,7 @@ public final class ComposerViewController: NSViewController {
     /// Closes the completion popup (e.g. when the pane is hidden).
     public func dismissTransientUI() {
         completion.dismiss()
+        if let emojiPopover, emojiPopover.isShown { emojiPopover.performClose(nil) }
     }
 
     /// Same as pressing Send: commits a composition, then requests a send unless
@@ -238,6 +252,7 @@ public final class ComposerViewController: NSViewController {
         configureSendButton()
         configureBanner()
         configureStatusRow()
+        toolbar = ComposerToolbarView(textView: textView)
         attachmentStrip.isHidden = true
         attachmentStrip.translatesAutoresizingMaskIntoConstraints = false
         attachmentStrip.heightAnchor.constraint(equalToConstant: ComposerAttachmentStrip.height).isActive = true
@@ -257,11 +272,24 @@ public final class ComposerViewController: NSViewController {
             $0.heightAnchor.constraint(equalToConstant: singleLineBoxHeight)
         }
         NSLayoutConstraint.activate(iconButtonHeightConstraints)
-        let inputRow = NSStackView(views: [attachButton, inputBox, sendButton])
+        emojiButton.image = NSImage(systemSymbolName: "smiley", accessibilityDescription: "Emoji")
+        emojiButton.isBordered = false
+        emojiButton.target = self
+        emojiButton.action = #selector(toggleEmojiPicker(_:))
+        emojiButton.setAccessibilityLabel("Emoji")
+        emojiButton.toolTip = "Emoji"
+        emojiButton.title = ""
+        emojiButton.imagePosition = .imageOnly
+        emojiButton.contentTintColor = .secondaryLabelColor
+        emojiButton.translatesAutoresizingMaskIntoConstraints = false
+        emojiButton.widthAnchor.constraint(equalToConstant: Self.attachButtonWidth).isActive = true
+        emojiButton.heightAnchor.constraint(equalToConstant: singleLineBoxHeight).isActive = true
+        emojiButton.isHidden = emojiPickerProvider == nil
+        let inputRow = NSStackView(views: [attachButton, emojiButton, inputBox, sendButton])
         inputRow.orientation = .horizontal
         inputRow.alignment = .bottom
         inputRow.spacing = 6
-        let stack = NSStackView(views: [bannerView, attachmentStrip, inputRow, statusRow])
+        let stack = NSStackView(views: [bannerView, attachmentStrip, toolbar, inputRow, statusRow])
         stack.orientation = .vertical
         stack.alignment = .leading
         stack.spacing = Self.stackSpacing
@@ -281,6 +309,7 @@ public final class ComposerViewController: NSViewController {
             top,
             bannerView.widthAnchor.constraint(equalTo: stack.widthAnchor),
             attachmentStrip.widthAnchor.constraint(equalTo: stack.widthAnchor),
+            toolbar.widthAnchor.constraint(equalTo: stack.widthAnchor),
             inputRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
             statusRow.widthAnchor.constraint(equalTo: stack.widthAnchor),
         ])
@@ -653,6 +682,7 @@ public final class ComposerViewController: NSViewController {
         var sections: [CGFloat] = [boxHeight(forInputHeight: inputHeight) + Self.fieldInsets.top + Self.fieldInsets.bottom]
         if !bannerView.isHidden { sections.append(Self.bannerHeight) }
         if !attachmentStrip.isHidden { sections.append(ComposerAttachmentStrip.height) }
+        if !toolbar.isHidden { sections.append(ComposerToolbarView.height + Self.stackSpacing) }
         if !statusRow.isHidden { sections.append(Self.statusHeight) }
         let total = ceil(insets.top + insets.bottom + sections.reduce(0, +)
                          + Self.stackSpacing * CGFloat(sections.count - 1))
@@ -685,6 +715,36 @@ public final class ComposerViewController: NSViewController {
     // MARK: Actions
 
     @objc private func chooseFiles(_ sender: Any?) { delegate?.composerRequestsFileSelection() }
+
+    /// Открывает пикер эмодзи над композером; выбор вставляет «:name: » в каретку
+    /// как одно undoable действие (бюджет драфта соблюдён).
+    @objc func toggleEmojiPicker(_ sender: Any?) {
+        if emojiPopover != nil {
+            closeEmojiPicker()
+            return
+        }
+        guard let picker = emojiPickerProvider?() else { NSSound.beep(); return }
+        let popover = NSPopover()
+        popover.behavior = .transient
+        popover.delegate = self
+        popover.contentViewController = picker
+        popover.contentSize = ReactionPickerViewController.preferredSize
+        picker.onPick = { [weak self] name in
+            guard let self else { return }
+            self.closeEmojiPicker()
+            _ = self.insertAtCaret(":\(name): ")
+            self.view.window?.makeFirstResponder(self.textView)
+        }
+        picker.onCancel = { [weak self] in self?.closeEmojiPicker() }
+        emojiPopover = popover
+        popover.show(relativeTo: emojiButton.bounds, of: emojiButton, preferredEdge: .maxY)
+    }
+
+    private func closeEmojiPicker() {
+        guard let emojiPopover else { return }
+        emojiPopover.performClose(nil)
+        self.emojiPopover = nil
+    }
 
     @objc private func sendButtonPressed(_ sender: Any?) {
         requestSend()
@@ -802,6 +862,7 @@ final class ComposerRootView: NSView {
     override var intrinsicContentSize: NSSize {
         NSSize(width: NSView.noIntrinsicMetric, height: preferredHeight)
     }
+
 }
 
 /// A label that never intercepts clicks, so clicking the placeholder focuses the
@@ -815,4 +876,12 @@ final class PassthroughLabel: NSTextField {
 /// below the input box's center under stack-view bottom alignment.
 final class ComposerIconButton: NSButton {
     override var alignmentRectInsets: NSEdgeInsets { NSEdgeInsetsZero }
+}
+
+extension ComposerViewController: NSPopoverDelegate {
+    /// Поповер закрылся сам (клик мимо, Escape) — забываем его.
+    public func popoverDidClose(_ notification: Notification) {
+        guard (notification.object as? NSPopover) === emojiPopover else { return }
+        emojiPopover = nil
+    }
 }

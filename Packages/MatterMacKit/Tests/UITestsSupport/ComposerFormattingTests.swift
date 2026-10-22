@@ -60,4 +60,60 @@ struct ComposerFormattingTests {
         #expect(ComposerTextView.markdownStyle(for: event("k", [.command, .option])) == .link)
         #expect(ComposerTextView.markdownStyle(for: event("k", .command)) == nil)
     }
+
+    /// Маркеры-строки: заголовки включаются, меняют уровень и снимаются.
+    @Test func headingMarkersToggleAndSwitchLevels() throws {
+        let h = ComposerHarness()
+        defer { h.close() }
+        h.type("title\nplain")
+        endEvent()
+        h.textView.setSelectedRange(NSRange(location: 0, length: 5))
+        h.textView.applyLineMarkers(.heading(1))
+        endEvent()
+        #expect(h.text == "# title\nplain")
+        // Выделена строка заголовка: H2 меняет уровень, а не снимает.
+        h.textView.setSelectedRange(NSRange(location: 0, length: 7))
+        h.textView.applyLineMarkers(.heading(2))
+        endEvent()
+        #expect(h.text == "## title\nplain")
+        h.textView.applyLineMarkers(.heading(2))
+        endEvent()
+        #expect(h.text == "title\nplain")
+        h.textView.undo(nil)
+        #expect(h.text == "## title\nplain", "снятие маркеров — один шаг undo")
+    }
+
+    /// Списки: нумерация целыми строками одной операцией, снятие повтором.
+    @Test func listMarkersRenumberAndToggle() throws {
+        let h = ComposerHarness()
+        defer { h.close() }
+        h.type("alpha\nbeta\ngamma")
+        endEvent()
+        h.textView.setSelectedRange(NSRange(location: 0, length: 17))
+        h.textView.applyLineMarkers(.ordered)
+        #expect(h.text == "1. alpha\n2. beta\n3. gamma")
+        h.textView.applyLineMarkers(.ordered)
+        #expect(h.text == "alpha\nbeta\ngamma")
+        h.textView.applyLineMarkers(.bullet)
+        #expect(h.text == "- alpha\n- beta\n- gamma")
+        h.textView.applyLineMarkers(.bullet)
+        #expect(h.text == "alpha\nbeta\ngamma")
+        // Курсор без выделения — маркируется строка каретки.
+        h.textView.setSelectedRange(NSRange(location: 6, length: 0))
+        h.textView.applyLineMarkers(.bullet)
+        #expect(h.text == "alpha\n- beta\ngamma")
+    }
+
+    /// Выделение выживает: маркеры накатываются на целые строки, курсор остаётся
+    /// внутри размеченного куска.
+    @Test func lineMarkersKeepSelectionOverWholeLines() throws {
+        let h = ComposerHarness()
+        defer { h.close() }
+        h.type("one\ntwo three")
+        h.textView.setSelectedRange(NSRange(location: 4, length: 3)) // «two»
+        h.textView.applyLineMarkers(.ordered)
+        #expect(h.text == "one\n1. two three")
+        #expect(h.textView.selectedRange() == NSRange(location: 4, length: 12),
+                "выделенными становятся целые строки")
+    }
 }

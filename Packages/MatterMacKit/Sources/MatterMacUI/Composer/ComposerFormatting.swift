@@ -25,6 +25,81 @@ extension ComposerTextView {
     @objc func formatLink(_ sender: Any?) { applyMarkdown(.link) }
     @objc func formatQuote(_ sender: Any?) { applyMarkdown(.quote) }
 
+    /// Line-prefix formatting (headings, lists). Adds the marker to every line of
+    /// the selection (the caret's line when nothing is selected) or removes it when
+    /// every line already carries the family's marker.
+    enum LineMarkerStyle {
+        case heading(Int)
+        case ordered
+        case bullet
+
+        /// Префикс строки с номером строчки (с нуля) — нумерованный список считает заново.
+        func prefix(index: Int) -> String {
+            switch self {
+            case .heading(let level): String(repeating: "#", count: level) + " "
+            case .ordered: "\(index + 1). "
+            case .bullet: "- "
+            }
+        }
+
+        /// Строка уже помечена этим точным маркером (снятие — только точное
+        /// совпадение; другой уровень заголовка переключает, а не снимает).
+        func isPresent(in line: String) -> Bool {
+            switch self {
+            case .heading(let level): line.hasPrefix(String(repeating: "#", count: level) + " ")
+            case .ordered: line.range(of: #"^\d+\. "#, options: .regularExpression) != nil
+            case .bullet: line.hasPrefix("- ")
+            }
+        }
+
+        /// Строка без маркеров этого семейства: заголовки снимаются любым
+        /// уровнем, списки — взаимозаменяемы (нумерация и «- » соседи).
+        func stripped(line: String) -> String {
+            var rest = line
+            switch self {
+            case .heading:
+                if let range = rest.range(of: #"^#{1,6} "#, options: .regularExpression) {
+                    rest = String(rest[range.upperBound...])
+                }
+            case .ordered, .bullet:
+                if let range = rest.range(of: #"^\d+\. "#, options: .regularExpression) {
+                    rest = String(rest[range.upperBound...])
+                }
+                if rest.hasPrefix("- ") { rest = String(rest.dropFirst(2)) }
+            }
+            return rest
+        }
+    }
+
+    /// Toggle line markers over the whole lines touched by the selection.
+    func applyLineMarkers(_ style: LineMarkerStyle) {
+        guard isEditable, !hasMarkedText() else { NSSound.beep(); return }
+        breakUndoCoalescing()
+        defer { breakUndoCoalescing() }
+        let selected = selectedRange()
+        let text = string as NSString
+        guard selected.location != NSNotFound, NSMaxRange(selected) <= text.length else { return }
+        // Расширенный диапазон — целые строки от начала первой до конца последней.
+        var start = selected.location
+        while start > 0, text.character(at: start - 1) != 0x0A { start -= 1 }
+        var end = NSMaxRange(selected)
+        while end < text.length, text.character(at: end) != 0x0A { end += 1 }
+        let linesRange = NSRange(location: start, length: end - start)
+        let lines = text.substring(with: linesRange).components(separatedBy: "\n")
+        let remove = !lines.isEmpty && lines.allSatisfy { style.isPresent(in: $0) }
+        let transformed = lines.enumerated().map { index, line -> String in
+            guard !line.isEmpty else { return line }
+            if remove { return style.stripped(line: line) }
+            return style.prefix(index: index) + style.stripped(line: line)
+        }
+        let replacement = transformed.joined(separator: "\n")
+        let before = string
+        insertText(replacement, replacementRange: linesRange)
+        if string != before {
+            setSelectedRange(NSRange(location: start, length: (replacement as NSString).length))
+        }
+    }
+
     /// Maps a key equivalent to a style (only plain Command/Shift/Option chords).
     static func markdownStyle(for event: NSEvent) -> MarkdownStyle? {
         let modifiers = event.modifierFlags.intersection([.command, .shift, .option, .control])
