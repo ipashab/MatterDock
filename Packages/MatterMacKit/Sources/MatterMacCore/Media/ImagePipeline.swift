@@ -130,12 +130,25 @@ public actor ImagePipeline {
             data = cached
             fromDisk = true
         } else {
-            guard let fetched = try? await service.imageData(key.resource, maximumBytes: maximumBytes), !Task.isCancelled else {
-                if !Task.isCancelled { failures.set(true, for: key, cost: 1) }
+            do {
+                let fetched = try await service.imageData(key.resource, maximumBytes: maximumBytes)
+                guard fetched.count <= maximumBytes else { failures.set(true, for: key, cost: 1); return nil }
+                data = fetched
+            } catch {
+                // В память идёт только собственная проблема ресурса (нет, запрещён, не
+                // декодируется). Сеть, лимиты запросов и 5xx преходящи: картинка будет
+                // запрошена заново, иначе всплеск параллельных загрузок в пикере
+                // навсегда превращает часть эмодзи в точки.
+                let permanent: Bool
+                switch error {
+                case .unauthorized, .forbidden, .notFound, .badRequest, .payloadTooLarge,
+                     .responseTooLarge, .malformedResponse, .notImplemented, .redirectRefused:
+                    permanent = true
+                default: permanent = false
+                }
+                if !Task.isCancelled, permanent { failures.set(true, for: key, cost: 1) }
                 return nil
             }
-            guard fetched.count <= maximumBytes else { failures.set(true, for: key, cost: 1); return nil }
-            data = fetched
         }
         // Source metadata is read before anything is decoded; the reservation is the
         // conservative size of the downsampled output, never the source.

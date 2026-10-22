@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import os
 import MatterMacModels
 import MattermostAPI
 @testable import MatterMacCore
@@ -58,6 +59,39 @@ struct ImagePipelineTests {
         #expect(await pipeline.decodedBytes == cost)
         cached = nil
         #expect(await pipeline.decodedBytes == 0)
+    }
+
+    @Test func transientFailureKeepsKeyAlivePermanentOneBurnsIt() async {
+        // Всплеск параллельных загрузок (пикер) даёт лимитку/сетевой сбой: ключ не
+        // должен сгорать — следующая попытка обязана дойти. 404 — наоборот, вечен.
+        let data = CoreFixtures.png()
+        let service = FakeMattermostService(endpoint: CoreFixtures.endpoint, me: CoreFixtures.me)
+        let attempts = OSAllocatedUnfairLock(initialState: 0)
+        service.withState { state in
+            state.imageHandler = { _, _ in
+                let n = attempts.withLock { count in
+                    count += 1
+                    return count
+                }
+                if n == 1 { throw APIError.rateLimited(retryAfterSeconds: nil) }
+                return data
+            }
+        }
+        let pipeline = ImagePipeline(budget: .standard, diagnostics: DiagnosticRing(byteBudget: 1_024))
+        let key = ImagePipeline.Key(scope: scope, resource: .customEmoji(id: "emoji"), maxPixelSize: 32)
+        #expect(await pipeline.image(for: key, using: service) == nil)
+        #expect(await pipeline.image(for: key, using: service) != nil,
+                "rate limit не должен вычёркивать картинку навсегда")
+        let gone = FakeMattermostService(endpoint: CoreFixtures.endpoint, me: CoreFixtures.me)
+        gone.withState { state in
+            state.imageHandler = { _, _ in
+                throw APIError.notFound(ServerErrorInfo(id: "", statusCode: 404, requestID: nil))
+            }
+        }
+        let missing = ImagePipeline.Key(scope: scope, resource: .customEmoji(id: "gone"), maxPixelSize: 32)
+        #expect(await pipeline.image(for: missing, using: gone) == nil)
+        #expect(await pipeline.image(for: missing, using: gone) == nil)
+        #expect(gone.calls.filter { $0 == "imageData" }.count == 1, "отсутствующую картинку не переспрашиваем")
     }
 
     @Test func boundsAndCancelledLateResponsesCannotPopulateCache() async {

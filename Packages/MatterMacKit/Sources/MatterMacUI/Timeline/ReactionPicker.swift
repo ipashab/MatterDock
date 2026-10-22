@@ -331,11 +331,17 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
 /// One emoji cell: the glyph as a large label; VoiceOver reads the short name.
 final class EmojiPickerItem: NSCollectionViewItem {
     static let identifier = NSUserInterfaceItemIdentifier("EmojiPickerItem")
+    /// Конвейер переполнен — отказ это норма, а не ошибка. Ячейка не остаётся
+    /// точками до перезахода в пикер: она переспрашивает с нарастающей паузой.
+    private static let imageRetryDelays: [Duration] = [.milliseconds(400), .milliseconds(900),
+                                                       .seconds(2), .seconds(4), .seconds(8)]
     private let glyphLabel = NSTextField(labelWithString: "")
     private let customImageView = NSImageView()
     private var imageTask: Task<Void, Never>?
     private var decodedImage: ImagePipeline.Decoded?
     private var imageID: String?
+    /// Для тестов: картинка показана (не «точки»).
+    private(set) var showsCustomImage = false
 
 
     override func loadView() {
@@ -364,6 +370,7 @@ final class EmojiPickerItem: NSCollectionViewItem {
         imageID = nil
         customImageView.image = nil
         decodedImage = nil
+        showsCustomImage = false
     }
 
     override func prepareForReuse() { super.prepareForReuse(); cancelImage() }
@@ -377,12 +384,24 @@ final class EmojiPickerItem: NSCollectionViewItem {
         if let id = emoji.customID, let imageLoader {
             imageID = id
             imageTask = Task { [weak self] in
-                let decoded = await imageLoader(id)
-                guard !Task.isCancelled, let self, imageID == id, let decoded else { return }
-                decodedImage = decoded
-                customImageView.image = NSImage(cgImage: decoded.image, size: .zero)
-                glyphLabel.isHidden = true
-                imageTask = nil
+                // Отказ конвейера (переполнение, сеть) — не ошибка картинки: просим
+                // заново с паузой, пока не приедет или не выдохнемся.
+                for attempt in 0...Self.imageRetryDelays.count {
+                    if attempt > 0 {
+                        try? await Task.sleep(for: Self.imageRetryDelays[attempt - 1])
+                        if Task.isCancelled { return }
+                    }
+                    guard !Task.isCancelled, let self, imageID == id else { return }
+                    if let decoded = await imageLoader(id) {
+                        decodedImage = decoded
+                        customImageView.image = NSImage(cgImage: decoded.image, size: .zero)
+                        glyphLabel.isHidden = true
+                        showsCustomImage = true
+                        imageTask = nil
+                        return
+                    }
+                    // Отказ — переспросим с паузой ниже.
+                }
             }
         }
         view.toolTip = ":" + emoji.name + ":"

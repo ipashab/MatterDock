@@ -1,8 +1,11 @@
 import AppKit
 import Testing
+import os
 import MatterMacModels
 import MatterMacCore
+import MattermostAPI
 @testable import MatterMacUI
+import TestSupport
 
 @MainActor
 @Suite("Custom emoji layout and slash detection")
@@ -63,6 +66,37 @@ struct CustomEmojiUITests {
         #expect(picker.customTask == nil)
         #expect(requests == [0, 1, 2])
         picker.viewDidDisappear()
+    }
+
+    @MainActor @Test func cellReasksPipelineAfterRefusalAndShowsImage() async throws {
+        // Отказы конвейера (rate limit) не должны оставлять ячейку «точками» до
+        // перезахода в пикер: свой backoff-переспрос доводит картинку до показа.
+        let service = FakeMattermostService(endpoint: CoreFixtures.endpoint, me: CoreFixtures.me)
+        let attempts = OSAllocatedUnfairLock(initialState: 0)
+        service.withState { state in
+            state.imageHandler = { _, _ in
+                let n = attempts.withLock { count in
+                    count += 1
+                    return count
+                }
+                if n <= 2 { throw APIError.rateLimited(retryAfterSeconds: nil) }
+                return CoreFixtures.png(width: 64, height: 64)
+            }
+        }
+        let pipeline = ImagePipeline(budget: .standard, diagnostics: DiagnosticRing(byteBudget: 1_024))
+        let scope = AccountScope(server: ServerSlotID(1), user: CoreFixtures.me.id)
+        let item = EmojiPickerItem()
+        _ = item.view
+        let entry = ReactionPickerViewController.Entry(
+            CustomEmoji(id: String(repeating: "c", count: 26), name: "keanu_thanks"))
+        item.configure(entry, imageLoader: { id in
+            await pipeline.image(for: ImagePipeline.Key(scope: scope, resource: .customEmoji(id: id),
+                                                       maxPixelSize: 64), using: service)
+        })
+        for _ in 0..<1600 where !item.showsCustomImage { try? await Task.sleep(for: .milliseconds(5)) }
+        #expect(item.showsCustomImage, "отказанная ячейка переспрашивает сама и догружается")
+        item.cancelImage()
+        #expect(!item.showsCustomImage)
     }
 
     @Test func pickerLoadsBoundedCustomPageAndSearch() async {
