@@ -77,6 +77,18 @@ public final class TimelineViewController: NSViewController {
         }
     }
 
+    /// Схема цветов пузырей (ADR 0056). Цвета — динамические `NSColor`, их
+    /// провайдеры читают схему при каждой отрисовке, а кэш рендера схему не
+    /// различает; смена гонит тот же сброс кэша прогонов и перерисовку
+    /// видимых строк, что смена часов — высоты не меняются.
+    public var bubbleScheme: BubbleScheme = .classic {
+        didSet {
+            guard oldValue != bubbleScheme else { return }
+            BubbleScheme.select(bubbleScheme)
+            rendererDidChange(fontScaleChanged: false)
+        }
+    }
+
     /// With a window theme the timeline draws no background of its own, so the themed
     /// backdrop behind the pane shows through (the theme keeps text contrast; see
     /// `ThemePalette`). Otherwise it draws the standard text background.

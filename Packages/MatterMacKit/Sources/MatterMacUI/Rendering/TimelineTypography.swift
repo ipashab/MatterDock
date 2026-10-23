@@ -121,50 +121,41 @@ nonisolated enum TimelinePalette {
         NSColor.labelColor.withAlphaComponent(highContrast ? 0.18 : (isDark ? 0.12 : 0.07))
     }
 
-    // Пузыри таймлайна (ADR 0041/0042). Тёмная тема — брендовый синий прототипа
-    // #2b5278 с почти-белым текстом. Светлая — по фидбеку владельца: тёмный
-    // синий на белом «резал», поэтому фон — мягкий сине-серый, текст — тёмный
-    // синий (пара к акценту прототипа #2f7fc1).
+    // Пузыри таймлайна (ADR 0041/0042, схема — ADR 0056). Точные значения
+    // `classic` — из прототипа: тёмная тема брендовый синий #2b5278 с
+    // почти-белым текстом, светлая — мягкий сине-серый с тёмно-синим текстом
+    // (тёмный синий на белом «резал» по фидбеку владельца). Остальные схемы —
+    // пресеты Settings ▸ Appearance; `dynamic`-провайдер читает выбранную
+    // схему при каждой отрисовке, поэтому смена схемы (как и смена темы) не
+    // требует пересборки приложения, а кэш рендера схему не различает.
     static let bubbleOutgoingBackground = dynamic { isDark, highContrast in
-        if isDark {
-            return NSColor(srgbRed: 43 / 255, green: 82 / 255, blue: 120 / 255, alpha: 1)
-        }
-        return highContrast
-            ? NSColor(srgbRed: 199 / 255, green: 221 / 255, blue: 242 / 255, alpha: 1)
-            : NSColor(srgbRed: 214 / 255, green: 232 / 255, blue: 247 / 255, alpha: 1)
+        BubbleScheme.selected.outgoingBackground(isDark: isDark, highContrast: highContrast)
     }
     static let bubbleIncomingBackground = dynamic { isDark, highContrast in
         isDark ? NSColor(srgbRed: 24 / 255, green: 37 / 255, blue: 51 / 255, alpha: 1)
                : NSColor.labelColor.withAlphaComponent(highContrast ? 0.10 : 0.06)
     }
-    /// Текст на пузыре: тёмная тема — почти белый; светлая — тёмно-синий
-    /// (на мягком сине-сером фоне серый системный читается хуже парного тона).
+    /// Текст на пузыре: тёмная тема — почти белый; светлая — тон, подобранный
+    /// к фону схемы (серый системный на цветном фоне читается хуже парного тона).
     static let bubbleOutgoingText = dynamic { isDark, _ in
-        isDark ? NSColor.white.withAlphaComponent(0.96)
-               : NSColor(srgbRed: 30 / 255, green: 55 / 255, blue: 80 / 255, alpha: 1)
+        BubbleScheme.selected.outgoingText(isDark: isDark)
     }
     /// Время/«изм.» в пузыре.
     static let bubbleOutgoingSecondary = dynamic { isDark, _ in
-        isDark ? NSColor.white.withAlphaComponent(0.6)
-               : NSColor(srgbRed: 30 / 255, green: 55 / 255, blue: 80 / 255, alpha: 0.65)
+        BubbleScheme.selected.outgoingSecondary(isDark: isDark)
     }
-    /// Ссылка на пузыре: тёмная тема — акцент прототипа #64b5ef, светлая —
-    /// парный #2f7fc1.
+    /// Ссылка на пузыре: акцент схемы, контрастный её фону.
     static let bubbleOutgoingLink = dynamic { isDark, _ in
-        isDark ? NSColor(srgbRed: 100 / 255, green: 181 / 255, blue: 239 / 255, alpha: 1)
-               : NSColor(srgbRed: 47 / 255, green: 127 / 255, blue: 193 / 255, alpha: 1)
+        BubbleScheme.selected.outgoingLink(isDark: isDark)
     }
     static let bubbleOutgoingCodeBackground = dynamic { isDark, highContrast in
-        isDark ? NSColor.white.withAlphaComponent(highContrast ? 0.22 : 0.14)
-               : NSColor.white.withAlphaComponent(highContrast ? 0.85 : 0.75)
+        BubbleScheme.selected.outgoingCodeBackground(isDark: isDark, highContrast: highContrast)
     }
     static let bubbleOutgoingCodeBorder = dynamic { isDark, _ in
-        isDark ? NSColor.white.withAlphaComponent(0.30)
-               : NSColor(srgbRed: 30 / 255, green: 55 / 255, blue: 80 / 255, alpha: 0.22)
+        BubbleScheme.selected.outgoingCodeBorder(isDark: isDark)
     }
     static let bubbleOutgoingQuoteBar = dynamic { isDark, _ in
-        isDark ? NSColor.white.withAlphaComponent(0.45)
-               : NSColor(srgbRed: 30 / 255, green: 55 / 255, blue: 80 / 255, alpha: 0.35)
+        BubbleScheme.selected.outgoingQuoteBar(isDark: isDark)
     }
     /// Полоса серьёзности у пузыря (рендер `.bubble.sev-*`, 3 pt inset).
     /// Контент, не бренд: цвет — из брендовой палитры прототипа.

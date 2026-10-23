@@ -48,6 +48,8 @@ struct LocalSettingsPersistenceTests {
             #expect(settings.language == .system)
             // Интерфейс рендера OpenDesign — пузыри включены по умолчанию (ADR 0042).
             #expect(settings.bubbleTimeline)
+            // ADR 0056: до выбора хранится классическая схема прототипа.
+            #expect(settings.bubbleScheme == .classic)
             // MatterDock: самообновления выключены по умолчанию (форк распространяется пересборкой).
             #expect(!settings.checksForUpdates && settings.updateChannel == nil)
             #expect(settings.theme == .system)
@@ -69,6 +71,7 @@ struct LocalSettingsPersistenceTests {
         first.sendBehavior = .commandReturnSends
         first.textSize = .extraLarge
         first.bubbleTimeline = true
+        first.bubbleScheme = .softBlue
         first.largeChatList = false
         first.appearance = .dark
         first.language = .russian
@@ -81,6 +84,7 @@ struct LocalSettingsPersistenceTests {
         #expect(storage.values["MatterMac.notificationsEnabled"] as? Bool == false)
         #expect(storage.values["MatterMac.textSize"] as? String == "extraLarge")
         #expect(storage.values["MatterMac.bubbleTimeline"] as? Bool == true)
+        #expect(storage.values["MatterMac.bubbleScheme"] as? String == "softBlue")
         // Выбор языка дублируется в `AppleLanguages` (пересматривается системой на старте).
         #expect(storage.values["MatterMac.language"] as? String == "russian")
         #expect((storage.values["AppleLanguages"] as? [String]) == ["ru"])
@@ -93,6 +97,7 @@ struct LocalSettingsPersistenceTests {
         #expect(!restored.playSound && !restored.bounceDockIcon && restored.soundName == sound)
         #expect(restored.sendBehavior == .commandReturnSends && restored.textSize == .extraLarge)
         #expect(restored.bubbleTimeline)
+        #expect(restored.bubbleScheme == .softBlue)
         #expect(!restored.largeChatList)
         #expect(restored.appearance == .dark && restored.language == .russian)
         #expect(!restored.checksForUpdates && restored.updateChannel == .nightly)
@@ -111,6 +116,7 @@ struct LocalSettingsPersistenceTests {
             "MatterMac.playSound": [false],
             "MatterMac.bounceDockIcon": 2.5,
             "MatterMac.bubbleTimeline": "YES",
+            "MatterMac.bubbleScheme": "neon",
             "MatterMac.largeChatList": "NO",
             "MatterMac.soundName": "Not A System Sound",
             "MatterMac.sendBehavior": "shiftReturnSends",
@@ -130,15 +136,18 @@ struct LocalSettingsPersistenceTests {
         #expect(settings.selectedSidebarFolder == "all" && settings.sidebarGroupIcons.isEmpty)
         // Строка вместо Bool — только настоящий Bool в расчёт (дефолт — включено, ADR 0042).
         #expect(settings.bubbleTimeline)
+        // Неизвестная схема не сохраняется под видом «выбранной» — дефолт `classic` (ADR 0056).
+        #expect(settings.bubbleScheme == .classic)
         #expect(settings.largeChatList)
         #expect(storage.writes == 0)
         // Only real booleans count; a valid value next to invalid ones is kept.
         let mixed = LocalSettings(storage: MemorySettingsStorage([
             "MatterMac.notificationsEnabled": false, "MatterMac.textSize": "small", "MatterMac.playSound": "false",
-            "MatterMac.language": "klingon",
+            "MatterMac.language": "klingon", "MatterMac.bubbleScheme": "graphite",
         ]))
         #expect(!mixed.notificationsEnabled && mixed.textSize == .small && mixed.playSound)
         #expect(mixed.language == .system)
+        #expect(mixed.bubbleScheme == .graphite)
     }
 
     @Test func withoutStorageSettingsStayInMemory() {

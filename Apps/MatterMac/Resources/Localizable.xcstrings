@@ -1829,6 +1829,16 @@
         }
       }
     },
+    "Bubble colors": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Цветовая схема пузырей"
+          }
+        }
+      }
+    },
     "Bulleted List": {
       "localizations": {
         "ru": {
@@ -2109,6 +2119,16 @@
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "Classic": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Классическая"
           }
         }
       }
@@ -3281,6 +3301,26 @@
           "stringUnit": {
             "state": "translated",
             "value": "Перейти"
+          }
+        }
+      }
+    },
+    "Graphite": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Графитовая"
+          }
+        }
+      }
+    },
+    "Green": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Зелёная"
           }
         }
       }
@@ -5195,6 +5235,16 @@
         }
       }
     },
+    "Ready-made bubble palettes. Soft is a light, muted blue for the light theme. Applies to every window at once.": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Готовые палитры пузырей; «Мягкая» — светлый приглушённый голубой для светлой темы. Применяется сразу во всех окнах."
+          }
+        }
+      }
+    },
     "Recent": {
       "localizations": {
         "ru": {
@@ -6341,6 +6391,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Смайлики и эмоции"
+          }
+        }
+      }
+    },
+    "Soft": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Мягкая"
           }
         }
       }

@@ -63,6 +63,7 @@ public final class LocalSettings {
         case appearance = "MatterMac.appearance"
         case language = "MatterMac.language"
         case bubbleTimeline = "MatterMac.bubbleTimeline"
+        case bubbleScheme = "MatterMac.bubbleScheme"
         case largeChatList = "MatterMac.largeChatList"
         case notificationsEnabled = "MatterMac.notificationsEnabled"
         case showMessagePreview = "MatterMac.showMessagePreview"
@@ -103,6 +104,17 @@ public final class LocalSettings {
     /// прогоняет сброс высот, как смена размера текста.
     public var bubbleTimeline = true {
         didSet { save(.bubbleTimeline, bubbleTimeline) }
+    }
+    /// Цветовая схема пузырей (ADR 0056): пресеты от `classic` до `green`,
+    /// свободного выбора цвета нет — текст, ссылки и код подогнаны под пару
+    /// фон/передний план каждой схемы. Применяется живьём: смена через
+    /// `ConversationSettingsBinding` перерисовывает видимые строки.
+    /// Неизвестное сохранённое значение загружается как `classic`.
+    public var bubbleScheme: BubbleScheme = .classic {
+        didSet {
+            guard oldValue != bubbleScheme, isLoaded else { return }
+            save(.bubbleScheme, bubbleScheme.rawValue)
+        }
     }
     /// Крупные строки списка чатов (рендер OpenDesign: аватары, время и превью
     /// последнего сообщения); мелкий режим — прежняя компактная строка.
@@ -186,6 +198,7 @@ public final class LocalSettings {
             sendBehavior = read.value(.sendBehavior) ?? sendBehavior
             textSize = read.value(.textSize) ?? textSize
             bubbleTimeline = read.bool(.bubbleTimeline) ?? bubbleTimeline
+            bubbleScheme = read.value(.bubbleScheme) ?? bubbleScheme
             largeChatList = read.bool(.largeChatList) ?? largeChatList
             appearance = read.value(.appearance) ?? appearance
             language = read.value(.language) ?? language
@@ -200,6 +213,9 @@ public final class LocalSettings {
             selectedSidebarFolder = read.folder(.selectedSidebarFolder) ?? selectedSidebarFolder
             sidebarGroupIcons = read.iconMap(.sidebarGroupIcons)
         }
+        // Сеем схему до первой отрисовки: палитра читает её в провайдерах
+        // динамических цветов; дальше значение держат биндинги панелей.
+        BubbleScheme.select(bubbleScheme)
         isLoaded = true
         if appearance != .system { applyAppearance() }
     }

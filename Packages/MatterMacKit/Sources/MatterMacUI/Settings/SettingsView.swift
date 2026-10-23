@@ -397,6 +397,15 @@ struct AppearanceSettingsTab: View {
                     .accessibilityIdentifier("bubbleTimelineToggle")
                 Text("Messages in Telegram-style bubbles; the classic flat layout is restored by turning this off.")
                     .font(.caption).foregroundStyle(.secondary)
+                Picker("Bubble colors", selection: $settings.bubbleScheme) {
+                    Text("Classic").tag(BubbleScheme.classic)
+                    Text("Soft").tag(BubbleScheme.softBlue)
+                    Text("Graphite").tag(BubbleScheme.graphite)
+                    Text("Green").tag(BubbleScheme.green)
+                }
+                .accessibilityIdentifier("bubbleSchemePicker")
+                Text("Ready-made bubble palettes. Soft is a light, muted blue for the light theme. Applies to every window at once.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Toggle("Large chat rows", isOn: $settings.largeChatList)
                     .accessibilityIdentifier("largeChatListToggle")
                 Text("Chat list with avatars, timestamps and last-message previews; off — the compact one-line list.")
