@@ -126,17 +126,17 @@ struct TimelineRowMetrics {
         static let metaSpacing: CGFloat = 2
         /// Зазор между однострочным телом и meta, уместившейся в ту же строку.
         static let inlineMetaGap: CGFloat = 10
-        /// Отступ overlay-пилюли meta от правого и нижнего края пузыря (рендер 10/4).
-        static let metaOverlayInset: CGFloat = 10
-        static let metaOverlayBottomInset: CGFloat = 4
         /// Минимальная ширина текста внутри пузыря: отдельно от широкого flat-минимума,
         /// чтобы короткие «ok»-пузыри оставались компактными.
         static let minimumInnerWidth: CGFloat = 44
         /// Аватар входящего в пузырном режиме (рендер: avatar-38); flat остаётся 32.
         static let avatarSize: CGFloat = 38
         static let avatarGap: CGFloat = 8
-        /// Доля ширины пузыря от контентной ширины строки (рендер: max-width 76%).
-        static let columnFraction: CGFloat = 0.76
+        /// Доля ширины пузыря от контентной ширины строки. Стартовый рендер давал
+        /// 76%; по репорту 2026-10-23 колонку расширили до 80% — длинным строкам
+        /// (ссылки, пути) не хватает места, а meta теперь занимает своё место
+        /// под контентом, а не накрывает последнюю строку.
+        static let columnFraction: CGFloat = 0.80
     }
 
     /// Левый край пузыря входящего: горизонтальный отступ + аватар 38 + зазор.
@@ -411,13 +411,14 @@ struct TimelineRowMetrics {
                                      y: layout.body.maxY - fonts.metaLineHeight,
                                      width: metaFrameWidth, height: fonts.metaLineHeight)
             } else {
-                // Многострочники и аттачменты: пилюля-оверлей в правом нижнем углу
-                // пузыря (рендер: `.msg-meta { right:10px; bottom:4px }`), вне потока.
-                bubble.meta = CGRect(
-                    x: bubbleX + bubbleWidth - Self.BubbleMetrics.metaOverlayInset - metaFrameWidth,
-                    y: bubbleTop + (innerY - bubbleTop) + Self.BubbleMetrics.verticalBottomPadding
-                        - Self.BubbleMetrics.metaOverlayBottomInset - fonts.metaLineHeight,
-                    width: metaFrameWidth, height: fonts.metaLineHeight)
+                // Многострочники, аттачменты и однострочники в полный край: meta —
+                // отдельная строка под контентом, прижата к правому краю. Угловая
+                // пилюля «вне потока» накрывала последнюю строку, когда та доходила
+                // до правого края (репорт 2026-10-23: время легло на длинную ссылку).
+                innerY += Self.BubbleMetrics.metaSpacing
+                bubble.meta = CGRect(x: bubbleX + bubbleWidth - padding - metaFrameWidth,
+                                     y: innerY, width: metaFrameWidth, height: fonts.metaLineHeight)
+                innerY += fonts.metaLineHeight
             }
         }
 

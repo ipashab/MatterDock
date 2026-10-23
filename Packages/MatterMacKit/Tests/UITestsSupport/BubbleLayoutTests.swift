@@ -193,26 +193,47 @@ struct BubbleLayoutTests {
                 "одна строка с inline meta без отдельной meta-строки")
     }
 
-    @Test func multiLineMetaOverlaysLastLine() {
-        // Многострочный пузырь: meta-пилюля — оверлей в правом нижнем углу
-        // (рендер `.msg-meta { right:10px; bottom:4px }`), может накрывать текст.
+    @Test func multiLineMetaGetsReservedBottomLine() {
+        // Многострочный пузырь: meta — отдельная строка под контентом (репорт
+        // 2026-10-23: угловая пилюля накрывала последнюю строку текста).
         let layout = metrics.messageLayout(for: post(own: true), width: 400, bodyHeight: 3 * metrics.fonts.bodyLineHeight,
                                            bodyUsedWidth: 200, renderer: MessageRenderer(), style: .bubble)
         let meta = layout.bubble!.meta!
         let bubble = layout.bubble!.frame
-        #expect(abs((bubble.maxX - meta.maxX) - TimelineRowMetrics.BubbleMetrics.metaOverlayInset) < 1,
-                "пилюля на 10 pt правее края")
-        #expect(abs((bubble.maxY - meta.maxY) - TimelineRowMetrics.BubbleMetrics.metaOverlayBottomInset) < 1,
-                "пилюля на 4 pt выше дна")
-        #expect(meta.minY >= bubble.minY, "пилюля внутри пузыря")
+        #expect(meta.minY >= layout.body.maxY, "meta под телом, не на тексте")
+        #expect(bubble.contains(meta), "meta внутри пузыря")
+        #expect(abs((bubble.maxY - meta.maxY) - TimelineRowMetrics.BubbleMetrics.verticalBottomPadding) < 1,
+                "meta садится на нижний padding пузыря")
+        #expect(abs((bubble.maxX - meta.maxX) - TimelineRowMetrics.BubbleMetrics.horizontalPadding) < 1,
+                "meta прижата к правому краю содержимого")
+    }
+
+    @Test func fullWidthSingleLineMetaDropsBelowBody() {
+        // Репорт 2026-10-23: однострочник в полный край (длинная ссылка) — inline
+        // не влезает, и время уходило ПОВЕРХ текста. Теперь — резерв строки снизу.
+        let fonts = metrics.fonts
+        let fullWidth = metrics.bubbleInnerWidth(for: post(own: true), layoutWidth: 400)
+        let layout = metrics.messageLayout(for: post(own: true), width: 400, bodyHeight: fonts.bodyLineHeight,
+                                           bodyUsedWidth: fullWidth, renderer: MessageRenderer(), style: .bubble)
+        let meta = layout.bubble!.meta!
+        #expect(meta.minY >= layout.body.maxY, "время не накладывается на полный текст строки")
+        // Пузырь выше ровно на распорку и строку meta.
+        let plain = metrics.messageLayout(for: post(own: true, last: false), width: 400, bodyHeight: fonts.bodyLineHeight,
+                                          bodyUsedWidth: fullWidth, renderer: MessageRenderer(), style: .bubble)
+        let expectedGrowth = TimelineRowMetrics.BubbleMetrics.metaSpacing + fonts.metaLineHeight
+        #expect(abs((layout.bubble!.frame.height - plain.bubble!.frame.height) - expectedGrowth) < 1,
+                "высота пузыря выросла на зарезервированную строку")
     }
 
     @Test func lastInGroupGetsMetaInsideBubble() {
         let last = metrics.messageLayout(for: post(own: true, edited: true), width: 400, bodyHeight: 20,
                                          bodyUsedWidth: 30, renderer: MessageRenderer(), style: .bubble)
         #expect(last.bubble!.meta != nil, "хвост группы несёт meta")
-        #expect(abs((last.bubble!.frame.maxX - last.bubble!.meta!.maxX)
-            - TimelineRowMetrics.BubbleMetrics.metaOverlayInset) < 1)
+        let meta = last.bubble!.meta!
+        // Тело в 20 pt не считается однострочным для inline — meta на своей строке.
+        #expect(meta.minY >= last.body.maxY, "meta под телом")
+        #expect(abs((last.bubble!.frame.maxX - meta.maxX)
+            - TimelineRowMetrics.BubbleMetrics.horizontalPadding) < 1)
         // У текста meta есть "(edited)" и время — проверяем строку.
         let text = metrics.bubbleMetaText(for: post(own: true, edited: true))
         #expect(text.string.contains(TimelineStrings.edited))
