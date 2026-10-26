@@ -468,7 +468,6 @@ final class EmojiHoldPreview: NSView {
     private let content = NSView()
     private let glyphLabel = NSTextField(labelWithString: "")
     private let emojiView = NSImageView()
-
     override init(frame frameRect: NSRect) {
         if #available(macOS 26, *) {
             let glass = NSGlassEffectView()
@@ -496,6 +495,7 @@ final class EmojiHoldPreview: NSView {
         glyphLabel.alignment = .center
         glyphLabel.font = .systemFont(ofSize: Self.glyphFontSize)
         emojiView.imageScaling = .scaleProportionallyUpOrDown
+        emojiView.animates = true
         glyphLabel.isHidden = true
         emojiView.isHidden = true
         setAccessibilityElement(false)
@@ -569,6 +569,8 @@ final class EmojiPickerItem: NSCollectionViewItem {
         glyphLabel.setAccessibilityElement(false)
         customImageView.frame = NSRect(x: 5, y: 5, width: 22, height: 22)
         customImageView.imageScaling = .scaleProportionallyUpOrDown
+        // GIF-эмодзи проигрывают все кадры (ADR 0058); у статики свойств нет.
+        customImageView.animates = true
         customImageView.setAccessibilityElement(false)
         cell.addSubview(customImageView)
         cell.addSubview(glyphLabel)
@@ -611,7 +613,8 @@ final class EmojiPickerItem: NSCollectionViewItem {
                     guard !Task.isCancelled, let self, imageID == id else { return }
                     if let decoded = await imageLoader(id) {
                         decodedImage = decoded
-                        customImageView.image = NSImage(cgImage: decoded.image, size: .zero)
+                        customImageView.image = decoded.animation?.nsImage
+                            ?? NSImage(cgImage: decoded.image, size: .zero)
                         glyphLabel.isHidden = true
                         showsCustomImage = true
                         imageTask = nil
@@ -727,10 +730,56 @@ enum ReactionPickerPresenter {
         }
         picker.onCancel = { [weak popover] in popover?.performClose(nil) }
         let bounds = timeline.view.bounds
-        let anchor = timeline.anchorRect(for: post)
-            ?? NSRect(x: bounds.midX, y: bounds.minY + 8, width: 1, height: 1)
-        popover.show(relativeTo: anchor, of: timeline.view, preferredEdge: .maxY)
+        let anchor: NSRect
+        let edge: NSRectEdge
+        if let row = timeline.anchorRect(for: post) {
+            let placement = Self.anchorPlacement(bubble: row, in: timeline.view,
+                                                 popoverHeight: ReactionPickerViewController.preferredSize.height)
+            anchor = placement.anchor
+            edge = placement.edge
+        } else {
+            anchor = NSRect(x: bounds.midX, y: bounds.minY + 8, width: 1, height: 1)
+            edge = .maxY
+        }
+        popover.show(relativeTo: anchor, of: timeline.view, preferredEdge: edge)
         return popover
+    }
+
+    /// Выбор стороны и якорной полосы (ADR 0058): попап пристыковывается к
+    /// полосе высотой 1 pt у верхнего или нижнего края пузыря, поэтому не
+    /// перекрывает сообщение даже когда AppKit подравнивает его к экрану.
+    /// Сторона — где до видимой границы экрана больше места: поповер может
+    /// выходить за пределы окна, но не за экран. Якорь по центру пузыря
+    /// горизонтально; стрелка указывает на край сообщения.
+    static func anchorPlacement(bubble: NSRect, in view: NSView, popoverHeight: CGFloat)
+        -> (anchor: NSRect, edge: NSRectEdge) {
+        guard let window = view.window else {
+            return stripAndEdge(above: true, flipped: view.isFlipped, bubble: bubble)
+        }
+        let bubbleOnScreen = window.convertToScreen(view.convert(bubble, to: nil))
+        let visible = (window.screen ?? NSScreen.main)?.visibleFrame ?? bubbleOnScreen
+        let above = isAbovePreferred(spaceAbove: visible.maxY - bubbleOnScreen.maxY,
+                                     spaceBelow: bubbleOnScreen.minY - visible.minY,
+                                     popoverHeight: popoverHeight)
+        return stripAndEdge(above: above, flipped: view.isFlipped, bubble: bubble)
+    }
+
+    /// Где места больше: над пузырём? Сторона, куда попап целиком помещается
+    /// до края экрана, приоритетна; при равенстве — верх (там нет композера).
+    static func isAbovePreferred(spaceAbove: CGFloat, spaceBelow: CGFloat, popoverHeight: CGFloat) -> Bool {
+        let needed = popoverHeight + 14 // стрелка и зазор
+        if spaceAbove >= needed, spaceAbove >= spaceBelow { return true }
+        if spaceBelow >= needed { return false }
+        return spaceAbove >= spaceBelow
+    }
+
+    /// Полоса у выбранного края пузыря и соответствующий ей край попапа.
+    /// В перевёрнутых координатах верх пузыря — это minY, в обычных — maxY.
+    static func stripAndEdge(above: Bool, flipped: Bool, bubble: NSRect) -> (anchor: NSRect, edge: NSRectEdge) {
+        let stripY = above == flipped ? bubble.minY : bubble.maxY - 1
+        let anchor = NSRect(x: bubble.midX - 1, y: stripY, width: 2, height: 1)
+        let edge: NSRectEdge = above == flipped ? .minY : .maxY
+        return (anchor, edge)
     }
 }
 

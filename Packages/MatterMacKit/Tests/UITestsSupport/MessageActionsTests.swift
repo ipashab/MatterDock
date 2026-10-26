@@ -22,6 +22,7 @@ struct MessageActionsTests {
         }
         func timeline(perform action: TimelineAction) { actions.append(action) }
         func timelineImage(for request: TimelineImageRequest) -> NSImage? { nil }
+        func timelineAnimation(for request: TimelineImageRequest) -> MatterMacCore.ImagePipeline.Animation? { nil }
         func timelineNeedsImage(_ request: TimelineImageRequest) { requested.append(request) }
     }
 
@@ -577,5 +578,45 @@ struct MessageActionsTests {
             try? await Task.sleep(for: .milliseconds(20))
         }
         #expect(f.spy.reports.last?.scrolled == true)
+    }
+}
+
+/// Якорь попапа реакций (ADR 0058): полоса строго у края пузыря на выбранной
+/// стороне — попап не перекрывает сообщение.
+@MainActor
+@Suite("Reaction picker anchor")
+struct ReactionPickerAnchorTests {
+    private let bubble = NSRect(x: 100, y: 200, width: 300, height: 120)
+
+    @Test func sidePrefersWherePopoverFitsAndIsBigger() {
+        let height = ReactionPickerViewController.preferredSize.height
+        // Обе стороны вмещают: больше места сверху.
+        #expect(ReactionPickerPresenter.isAbovePreferred(spaceAbove: 500, spaceBelow: 300, popoverHeight: height))
+        // Сверху не хватает, снизу вмещается — низ.
+        #expect(!ReactionPickerPresenter.isAbovePreferred(spaceAbove: 100, spaceBelow: 500, popoverHeight: height))
+        // Нигде не вмещается — берём большую сторону.
+        #expect(ReactionPickerPresenter.isAbovePreferred(spaceAbove: 200, spaceBelow: 100, popoverHeight: height))
+        #expect(!ReactionPickerPresenter.isAbovePreferred(spaceAbove: 100, spaceBelow: 200, popoverHeight: height))
+        // При равенстве — верх.
+        #expect(ReactionPickerPresenter.isAbovePreferred(spaceAbove: 300, spaceBelow: 300, popoverHeight: height))
+    }
+
+    @Test func stripSitsAtTheChosenEdgeOfTheBubble() {
+        // Перевёрнутый вид таймлайна: верх пузыря — minY.
+        let above = ReactionPickerPresenter.stripAndEdge(above: true, flipped: true, bubble: bubble)
+        #expect(above.anchor.minY == bubble.minY)
+        #expect(above.anchor.height == 1)
+        #expect(above.anchor.midX == bubble.midX)
+        #expect(above.edge == .minY)
+        let below = ReactionPickerPresenter.stripAndEdge(above: false, flipped: true, bubble: bubble)
+        #expect(below.anchor.maxY == bubble.maxY)
+        #expect(below.edge == .maxY)
+        // Обычные координаты: семантика краёв зеркальная.
+        let plainAbove = ReactionPickerPresenter.stripAndEdge(above: true, flipped: false, bubble: bubble)
+        #expect(plainAbove.anchor.maxY == bubble.maxY)
+        #expect(plainAbove.edge == .maxY)
+        let plainBelow = ReactionPickerPresenter.stripAndEdge(above: false, flipped: false, bubble: bubble)
+        #expect(plainBelow.anchor.minY == bubble.minY)
+        #expect(plainBelow.edge == .minY)
     }
 }
