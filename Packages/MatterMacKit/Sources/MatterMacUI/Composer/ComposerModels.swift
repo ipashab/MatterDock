@@ -1,5 +1,6 @@
 public import Foundation
 public import MatterMacModels
+public import MatterMacCore
 
 // Public value types and protocols of the native composer (SPEC §4, §11, §13).
 // Everything here is session-only: nothing is persisted, and the composer never
@@ -21,6 +22,9 @@ nonisolated public enum ComposerMode: Hashable, Sendable {
     case compose
     /// Replying in a thread started by `authorName` (display text only).
     case reply(authorName: String)
+    /// Ответ-цитата в канале (ADR 0057): баннер показывает автора и обрывок
+    /// процитированного сообщения, отправка несёт `props.quote_post_id`.
+    case quoteReply(quoted: ReplyContext)
     /// Editing an existing post. `original` is the post's current server text; the
     /// host decides what "no change" means.
     case edit(postID: PostID, original: String)

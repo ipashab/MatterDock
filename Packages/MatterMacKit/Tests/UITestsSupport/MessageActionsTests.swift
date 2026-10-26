@@ -200,16 +200,18 @@ struct MessageActionsTests {
         try #require(bar.button(.quickReaction("heart"))).performClick(nil)
         try #require(bar.button(.addReaction)).performClick(nil)
         try #require(bar.button(.reply)).performClick(nil)
+        // «Ответить» в канале начинает ответ-цитату (ADR 0057); «Ответить в
+        // обсуждении» остаётся в меню.
         #expect(f.spy.actions == [.toggleReaction(id, emojiName: "+1"), .toggleReaction(id, emojiName: "heart"),
-                                  .addReaction(id), .reply(id)])
+                                  .addReaction(id), .quoteReply(ReplyContext(postID: id, authorName: "Bob", snippet: "hello"))])
         // "More" offers exactly the context-menu items.
         let more = try #require(f.controller.moreMenu(for: id))
         let context = NSMenu()
         f.controller.populate(context, row: 0)
         #expect(more.items.map(\.title) == context.items.map(\.title))
         #expect(more.items.filter { !$0.isSeparatorItem }.map(\.title) == [
-            "Reply in Thread", "Add Reaction…", "Forward Message…", "Mark as Unread", "Save Message", "Pin to Channel", "Copy Link",
-            "Copy Text", "Edit Message", "Delete Message…", "View Profile of Bob",
+            "Reply", "Reply in Thread", "Add Reaction…", "Forward Message…", "Mark as Unread", "Save Message", "Pin to Channel",
+            "Copy Link", "Copy Text", "Edit Message", "Delete Message…", "View Profile of Bob",
         ])
         let pin = try #require(more.items.first { $0.title == "Pin to Channel" })
         _ = (pin.target as? NSObject)?.perform(pin.action, with: pin)
@@ -243,7 +245,7 @@ struct MessageActionsTests {
         defer { f.close() }
         let actions = try #require(try cell(f).accessibilityCustomActions())
         #expect(actions.map(\.name) == [
-            "React with :+1:", "React with :white_check_mark:", "React with :heart:", "Reply in Thread", "Add Reaction…",
+            "React with :+1:", "React with :white_check_mark:", "React with :heart:", "Reply", "Reply in Thread", "Add Reaction…",
             "Forward Message…", "Mark as Unread", "Save Message", "Pin to Channel", "Copy Link", "Copy Text", "Edit Message",
             "Delete Message…", "View Profile of Bob",
         ])

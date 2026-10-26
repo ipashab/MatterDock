@@ -355,6 +355,7 @@ private final class StubCellHost: TimelineCellHost {
     let renderer = MessageRenderer()
     let rowMetrics = TimelineRowMetrics(fonts: .forScale(1))
     var quickReactions: [String] { [] }
+    var allowsQuoteReply: Bool { true }
     func perform(_ action: TimelineAction) {}
     func performPrepared(_ action: TimelineAction) {}
     func image(for request: TimelineImageRequest) -> NSImage? { nil }

@@ -127,7 +127,8 @@ extension TimelineViewController {
         setHoverHighlight(pointerID)
         setHoverTimestamp(target.map { items[$0.row].id })
         guard let target, let post = items[target.row].post,
-              hoverBar.configure(item: items[target.row].id, post: post, quickReactions: quickReactions,
+              hoverBar.configure(item: items[target.row].id, post: post, allowsQuoteReply: allowsQuoteReply,
+                                 quickReactions: quickReactions,
                                  emojiText: { [renderer] in renderer.emojiText(for: $0) })
         else {
             hoverBar.reset()

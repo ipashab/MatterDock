@@ -136,6 +136,8 @@ public final class ComposerViewController: NSViewController {
     private let bannerView = NSStackView()
     private let bannerIcon = NSImageView()
     private let bannerLabel = NSTextField(labelWithString: "")
+    /// Вторая строка баннера: обрывок цитируемого сообщения (режим ответа-цитаты).
+    private let bannerDetailLabel = NSTextField(labelWithString: "")
     let bannerCancelButton = NSButton()
     private let statusRow = NSStackView()
     let statusLabel = NSTextField(labelWithString: "")
@@ -147,6 +149,8 @@ public final class ComposerViewController: NSViewController {
     private var isLoadingDraft = false
 
     private static let bannerHeight: CGFloat = 24
+    /// Баннер ответа-цитаты: строка автора плюс строка обрывка цитаты.
+    private static let quoteBannerHeight: CGFloat = 38
     private static let statusHeight: CGFloat = 16
     private static let stackSpacing: CGFloat = 6
     private static let outerInsets = NSEdgeInsets(top: 6, left: 10, bottom: 8, right: 10)
@@ -492,10 +496,23 @@ public final class ComposerViewController: NSViewController {
         bannerIcon.setContentHuggingPriority(.required, for: .horizontal)
         bannerIcon.contentTintColor = .secondaryLabelColor
         bannerLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize, weight: .medium)
-        bannerLabel.textColor = .secondaryLabelColor
+        bannerLabel.textColor = .labelColor
         bannerLabel.lineBreakMode = .byTruncatingTail
         bannerLabel.maximumNumberOfLines = 1
         bannerLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        bannerDetailLabel.font = .systemFont(ofSize: NSFont.smallSystemFontSize)
+        bannerDetailLabel.textColor = .secondaryLabelColor
+        bannerDetailLabel.lineBreakMode = .byTruncatingTail
+        bannerDetailLabel.maximumNumberOfLines = 1
+        bannerDetailLabel.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        bannerDetailLabel.isHidden = true
+        // Вертикальная группа «автор + обрывок» для ответа-цитаты; в остальных
+        // режимах обрывок скрыт и баннер остаётся однострочным.
+        let bannerText = NSStackView(views: [bannerLabel, bannerDetailLabel])
+        bannerText.orientation = .vertical
+        bannerText.alignment = .leading
+        bannerText.spacing = 1
+        bannerText.detachesHiddenViews = true
         bannerCancelButton.image = NSImage(systemSymbolName: "xmark.circle.fill", accessibilityDescription: nil)
         bannerCancelButton.imagePosition = .imageOnly
         bannerCancelButton.isBordered = false
@@ -505,12 +522,12 @@ public final class ComposerViewController: NSViewController {
         bannerCancelButton.setContentHuggingPriority(.required, for: .horizontal)
         let spacer = NSView()
         spacer.setContentHuggingPriority(.defaultLow, for: .horizontal)
-        bannerView.setViews([bannerIcon, bannerLabel, spacer, bannerCancelButton], in: .leading)
+        bannerView.setViews([bannerIcon, bannerText, spacer, bannerCancelButton], in: .leading)
         bannerView.orientation = .horizontal
         bannerView.alignment = .centerY
         bannerView.spacing = 6
         bannerView.translatesAutoresizingMaskIntoConstraints = false
-        bannerView.heightAnchor.constraint(equalToConstant: Self.bannerHeight).isActive = true
+        bannerView.heightAnchor.constraint(greaterThanOrEqualToConstant: Self.bannerHeight).isActive = true
         bannerView.isHidden = true
     }
 
@@ -608,8 +625,11 @@ public final class ComposerViewController: NSViewController {
         sendButton.contentTintColor = canSend ? .controlAccentColor : .tertiaryLabelColor
         let isEdit: Bool
         if case .edit = mode { isEdit = true } else { isEdit = false }
-        // Расписание недоступно в режиме правки: «отложить правку» не имеет смысла.
-        scheduleButton.isHidden = !isSchedulingAvailable || isEdit
+        // Расписание недоступно в режимах правки и ответа-цитаты: «отложить
+        // правку» не имеет смысла, отложенная цитата не поддерживается (ADR 0057).
+        let isScheduleHidden: Bool
+        if case .quoteReply = mode { isScheduleHidden = true } else { isScheduleHidden = isEdit }
+        scheduleButton.isHidden = !isSchedulingAvailable || isScheduleHidden
         scheduleButton.isEnabled = canSend
         sendButton.setAccessibilityLabel(isEdit ? String(localized: "Save edit") : String(localized: "Send message"))
         let shortcut = sendBehavior == .returnSends ? String(localized: "Return") : String(localized: "Command-Return")
@@ -631,15 +651,27 @@ public final class ComposerViewController: NSViewController {
             bannerView.isHidden = false
             bannerIcon.image = NSImage(systemSymbolName: "arrowshape.turn.up.left", accessibilityDescription: nil)
             bannerLabel.stringValue = String(localized: "Replying to \(authorName)")
+            bannerDetailLabel.isHidden = true
+            bannerCancelButton.setAccessibilityLabel(String(localized: "Cancel reply"))
+            bannerCancelButton.toolTip = String(localized: "Cancel reply (Escape)")
+        case .quoteReply(let quoted):
+            bannerView.isHidden = false
+            bannerIcon.image = NSImage(systemSymbolName: "arrowshape.turn.up.left", accessibilityDescription: nil)
+            bannerLabel.stringValue = quoted.authorName
+            bannerDetailLabel.stringValue = quoted.snippet
+            bannerDetailLabel.isHidden = quoted.snippet.isEmpty
+            bannerView.setAccessibilityLabel(String(localized: "Reply to message"))
             bannerCancelButton.setAccessibilityLabel(String(localized: "Cancel reply"))
             bannerCancelButton.toolTip = String(localized: "Cancel reply (Escape)")
         case .edit:
             bannerView.isHidden = false
             bannerIcon.image = NSImage(systemSymbolName: "pencil", accessibilityDescription: nil)
             bannerLabel.stringValue = String(localized: "Editing message")
+            bannerDetailLabel.isHidden = true
             bannerCancelButton.setAccessibilityLabel(String(localized: "Cancel editing"))
             bannerCancelButton.toolTip = String(localized: "Cancel editing (Escape)")
         }
+        updatePreferredHeight()
     }
 
     private func showNotice(_ text: String) {
@@ -713,7 +745,10 @@ public final class ComposerViewController: NSViewController {
         }
         let insets = Self.outerInsets
         var sections: [CGFloat] = [boxHeight(forInputHeight: inputHeight) + Self.fieldInsets.top + Self.fieldInsets.bottom]
-        if !bannerView.isHidden { sections.append(Self.bannerHeight) }
+        if !bannerView.isHidden {
+            // Ответ-цитата занимает две строки: автор плюс обрывок цитаты.
+            if case .quoteReply = mode { sections.append(Self.quoteBannerHeight) } else { sections.append(Self.bannerHeight) }
+        }
         if !attachmentStrip.isHidden { sections.append(ComposerAttachmentStrip.height) }
         if !toolbar.isHidden { sections.append(ComposerToolbarView.height + Self.stackSpacing) }
         if !statusRow.isHidden { sections.append(Self.statusHeight) }

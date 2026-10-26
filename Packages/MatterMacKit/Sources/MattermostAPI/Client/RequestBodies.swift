@@ -14,13 +14,16 @@ struct LoginBody: Encodable {
 }
 
 /// `POST /posts`. `root_id` is omitted for root posts; `id`, `create_at`, `user_id`
-/// and `is_pinned` are never sent.
+/// and `is_pinned` are never sent. `props` carries only the quote pair of the
+/// «ответ на сообщение» feature; server-side props (webhook, system context)
+/// are never sent by the client.
 struct CreatePostBody: Encodable {
     let channel_id: String
     let message: String
     let root_id: String?
     let file_ids: [String]
     let pending_post_id: String
+    let props: [String: String]?
 }
 
 /// `PUT /posts/{id}/patch`: only `message` is patched.

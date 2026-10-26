@@ -6,6 +6,11 @@ public import MatterMacCore
 /// opens URLs, or mutates state itself; the delegate (a coordinator) decides.
 nonisolated public enum TimelineAction: Hashable, Sendable {
     case reply(PostID)
+    /// Ответ-цитата в том же канале («ответить на сообщение», ADR 0057):
+    /// баннер с цитатой над полем ввода, отправка с `props.quote_post_id`.
+    /// Пayload — идентификатор и данные для баннера, снятые со строки,
+    /// где действие было вызвано.
+    case quoteReply(ReplyContext)
     case addReaction(PostID)
     case toggleReaction(PostID, emojiName: String)
     case edit(PostID)

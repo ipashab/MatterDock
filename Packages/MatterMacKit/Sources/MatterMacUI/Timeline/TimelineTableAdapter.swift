@@ -183,7 +183,7 @@ extension TimelineViewController: TimelineCellHost {
         populate(menu, post: post)
     }
     func populate(_ menu: NSMenu, post: PostPresentation) {
-        for entry in TimelinePostActions.entries(for: post) {
+        for entry in TimelinePostActions.entries(for: post, allowsQuoteReply: allowsQuoteReply) {
             guard let entry else {
                 menu.addItem(.separator())
                 continue

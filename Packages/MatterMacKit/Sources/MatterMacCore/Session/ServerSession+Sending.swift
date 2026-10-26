@@ -46,7 +46,7 @@ extension ServerSession {
     /// pending queue until confirmed or explicitly discarded.
     @discardableResult
     public func enqueueSend(text: String, channel: ChannelID, rootID: PostID?, attachments: [UploadSource],
-                            reservation: UnsentWorkLedger.Reservation) throws(SendRejection) -> PendingPostID {
+                            reservation: UnsentWorkLedger.Reservation, quotedPostID: PostID? = nil) throws(SendRejection) -> PendingPostID {
         guard isActiveSessionAlive else { throw .sessionClosed }
         try validateSend(text: text, channel: channel, attachments: attachments)
         let pendingID = pending.makePendingID(user: me.id, now: now())
@@ -55,7 +55,7 @@ extension ServerSession {
             attachments: attachments.enumerated().map { index, source in
                 PendingSend.Attachment(clientID: "\(pendingID.rawValue)-\(index)", source: source)
             },
-            createdAt: now(), reservation: reservation)
+            createdAt: now(), reservation: reservation, quotedPostID: quotedPostID)
         pending.append(send)
         deps.diagnostics.record(.send, .info, "send queued")
         markDirty(rootID == nil ? .timeline : [.thread, .timeline])
@@ -129,7 +129,8 @@ extension ServerSession {
         }
         markDirty(targetFlags(send))
         let outgoing = OutgoingPost(channelID: send.channelID, rootID: send.rootID, message: send.message,
-                                    fileIDs: send.attachments.compactMap(\.uploadedFileID), pendingPostID: send.pendingID)
+                                    fileIDs: send.attachments.compactMap(\.uploadedFileID), pendingPostID: send.pendingID,
+                                    quotedPostID: send.quotedPostID)
         do {
             let post = try await service.createPost(outgoing)
             guard self.epoch == epoch, !Task.isCancelled else { return }

@@ -127,13 +127,19 @@ public struct OutgoingPost: Sendable, Hashable {
     public var message: String
     public var fileIDs: [FileID]
     public var pendingPostID: PendingPostID
+    /// Процитированный пост («ответ на сообщение», ADR 0057): уходит в
+    /// `props` как `quote_post_id` + дубль `previewed_post` — так отвечает
+    /// веб-клиент сервера, ровно эти ключи возвращаются в эхо.
+    public var quotedPostID: PostID?
 
-    public init(channelID: ChannelID, rootID: PostID?, message: String, fileIDs: [FileID], pendingPostID: PendingPostID) {
+    public init(channelID: ChannelID, rootID: PostID?, message: String, fileIDs: [FileID], pendingPostID: PendingPostID,
+                quotedPostID: PostID? = nil) {
         self.channelID = channelID
         self.rootID = rootID
         self.message = message
         self.fileIDs = fileIDs
         self.pendingPostID = pendingPostID
+        self.quotedPostID = quotedPostID
     }
 }
 

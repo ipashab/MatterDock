@@ -17,6 +17,12 @@ public enum TimelineTarget: Hashable, Sendable {
         case .thread(_, let channel): channel
         }
     }
+
+    /// Панель треда или канал: в треде нет ответов-цитат (ADR 0057).
+    public var isThread: Bool {
+        if case .thread = self { return true }
+        return false
+    }
 }
 
 public struct TimelineItemID: Hashable, Sendable, CustomStringConvertible {

@@ -329,9 +329,12 @@ public final class FakeMattermostService: MattermostService {
             state.nextID += 1
             let base = "srv" + String(n)
             let id = PostID(unchecked: base + String(repeating: "q", count: 26 - base.count))
-            let post = Post(id: id, channelID: outgoing.channelID, userID: state.me.id, rootID: outgoing.rootID,
+            var post = Post(id: id, channelID: outgoing.channelID, userID: state.me.id, rootID: outgoing.rootID,
                             message: outgoing.message, createAt: MattermostTimestamp(milliseconds: createAt + Int64(n)),
                             fileIDs: outgoing.fileIDs, pendingPostID: outgoing.pendingPostID)
+            // Эхо сервера несёт цитату в props (как реальный Okko-сервер на
+            // ответ-цитату); фейк повторяет это для UI-сценариев ADR 0057.
+            if let quoted = outgoing.quotedPostID { post.props.quotePostID = quoted }
             state.posts[id] = post
             return post
         }

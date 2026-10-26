@@ -470,8 +470,15 @@ public final class MattermostHTTPClient: MattermostService {
     }
 
     public func createPost(_ post: OutgoingPost) async throws(APIError) -> Post {
+        // «Ответ на сообщение» (ADR 0057): оба ключа, как в исходящем трафике
+        // веб-клиента сервера — канонический `quote_post_id` и его дубль
+        // `previewed_post`. Пустые пропсы не отправляем вовсе.
+        let props: [String: String]? = post.quotedPostID.map { id in
+            ["quote_post_id": id.rawValue, "previewed_post": id.rawValue]
+        }
         let body = CreatePostBody(channel_id: post.channelID.rawValue, message: post.message, root_id: post.rootID?.rawValue,
-                                  file_ids: post.fileIDs.map(\.rawValue), pending_post_id: post.pendingPostID.rawValue)
+                                  file_ids: post.fileIDs.map(\.rawValue), pending_post_id: post.pendingPostID.rawValue,
+                                  props: props)
         return try await send(.post, ["posts"], body: body, decode: PostWire.self, limit: small).post
     }
 

@@ -546,6 +546,69 @@ struct ConversationIntegrationTests {
         await h.close()
     }
 
+    @Test func quoteReplyBannerRoundTripAndSendCarriesTheQuote() async throws {
+        // ADR 0057: hover-«Ответить» в канале открывает режим ответа-цитаты —
+        // баннер с автором и обрывком над полем; отправка уходит с
+        // quotedPostID; смена панели сохраняет режим; Esc его снимает.
+        let original = CoreFixtures.post(3, channel: CoreFixtures.channel(1).id, message: "123")
+        let h = try await Harness(posts: [original])
+        #expect(await waitUntil { h.model.timeline?.items.contains { $0.post?.postID == original.id } == true })
+        let quote = try #require(await h.model.session.post(original.id))
+        let context = ReplyContext(postID: original.id, authorName: "Pavel Ivanov", snippet: "123")
+        h.controller.timeline(perform: .quoteReply(context))
+        #expect(h.controller.composer.mode == .quoteReply(quoted: context))
+        h.controller.composer.load(draft: Draft(text: "Ответ"))
+        h.controller.saveDraft()
+        // Смена цели (другой канал и обратно) возвращает черновик вместе с цитатой.
+        let key = h.controller.key
+        h.controller.update(target: .channel(CoreFixtures.channel(2).id), snapshot: nil)
+        #expect(h.controller.composer.mode == .compose)
+        h.controller.update(target: .channel(CoreFixtures.channel(1).id), snapshot: nil)
+        #expect(h.controller.composer.mode == .quoteReply(quoted: context))
+        // Отправка несёт цитату и снимает режим; POST получает quotedPostID.
+        h.controller.composerDidRequestSend(text: "Ответ")
+        #expect(await waitUntil {
+            h.service.withState { state in
+                state.createdPosts.contains { $0.message == "Ответ" && $0.quotedPostID == original.id }
+            }
+        })
+        #expect(h.controller.composer.mode == .compose)
+        #expect(h.app.environment.drafts.draft(for: key)?.quotedPost == nil)
+        // Серверное эхо вернулось с цитатой — в таймлайне карточка «В ответ на».
+        #expect(await waitUntil {
+            h.model.timeline?.items.contains(where: { $0.post?.replyContext?.postID == original.id }) == true
+        })
+        await h.close()
+    }
+
+    @Test func quoteReplyCancelKeepsText() async throws {
+        let original = CoreFixtures.post(3, channel: CoreFixtures.channel(1).id, message: "123")
+        let h = try await Harness(posts: [original])
+        #expect(await waitUntil { h.model.timeline?.items.contains { $0.post?.postID == original.id } == true })
+        let context = ReplyContext(postID: original.id, authorName: "Pavel Ivanov", snippet: "123")
+        h.controller.timeline(perform: .quoteReply(context))
+        h.controller.composer.load(draft: Draft(text: "набранный текст"))
+        h.controller.composerDidRequestCancelMode()
+        #expect(h.controller.composer.mode == .compose)
+        #expect(h.controller.composer.text == "набранный текст")
+        let key = h.controller.key
+        #expect(h.app.environment.drafts.draft(for: key)?.quotedPost == nil)
+        await h.close()
+    }
+
+    @Test func threadPaneMenuOmitsQuoteReplyButChannelOffersIt() async throws {
+        // В панели треда цитат нет; в канале «Ответить» — цитата, «Ответить в
+        // обсуждении» — тред.
+        let root = CoreFixtures.post(1, channel: CoreFixtures.channel(1).id, message: "root")
+        let h = try await Harness(posts: [root])
+        #expect(await waitUntil { h.model.timeline?.items.contains { $0.post?.postID == root.id } == true })
+        let entries = TimelinePostActions.entries(for: try #require(h.model.timeline?.items.compactMap(\.post).first))
+        let titles = entries.compactMap(\.?.title)
+        #expect(titles.contains(String(localized: "Reply")))
+        #expect(titles.contains(String(localized: "Reply in Thread")))
+        await h.close()
+    }
+
     @Test func openingDirectMessageResetsThreadAndPublishesMatchingHistory() async throws {
         let h = try await Harness()
         let root = CoreFixtures.post(1, channel: h.first.id)

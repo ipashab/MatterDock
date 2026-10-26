@@ -39,6 +39,16 @@ final class ConversationController: NSViewController, DraftProviding, ComposerVi
     private var generation: UInt64 = 0
     private var typingTask: Task<Void, Never>?
     private var editingPost: PostID?
+    /// Процитированный пост режима ответа-цитаты (ADR 0057); живёт в черновике.
+    private var quotedPost: ReplyContext? {
+        didSet {
+            if let quotedPost {
+                composer.mode = .quoteReply(quoted: quotedPost)
+            } else if case .quoteReply = composer.mode {
+                composer.mode = .compose
+            }
+        }
+    }
     private var editingStateDiscarded = false
     var imageTasks: [TimelineImageRequest: Task<Void, Never>] = [:]
     var displayedImages: [TimelineImageRequest: (lease: ImagePipeline.Decoded, image: NSImage)] = [:]
@@ -214,7 +224,15 @@ final class ConversationController: NSViewController, DraftProviding, ComposerVi
         selectedFiles = draft.attachments
         refreshAttachmentChips()
         editingPost = draft.editingPost
-        composer.mode = draft.editingPost.map { .edit(postID: $0, original: "") } ?? .compose
+        // Цитата восстановления: баннер ответа возвращается вместе с текстом
+        // (ADR 0057). Черновик без текста, но с цитатой не сбрасываем — как и
+        // режим правки с пустым текстом.
+        quotedPost = draft.quotedPost
+        if draft.quotedPost != nil, draft.editingPost == nil {
+            composer.mode = .quoteReply(quoted: draft.quotedPost!)
+        } else {
+            composer.mode = draft.editingPost.map { .edit(postID: $0, original: "") } ?? .compose
+        }
         composer.load(draft: draft)
         updateComposerAvailability()
     }
@@ -255,6 +273,7 @@ final class ConversationController: NSViewController, DraftProviding, ComposerVi
         guard !editingStateDiscarded, model?.isDetached == false, model?.requiresAuthentication == false, !environment.drafts.isSubmitting(key) else { return }
         var draft = composer.currentDraft()
         draft.editingPost = editingPost
+        draft.quotedPost = quotedPost
         draft.attachments = selectedFiles
         do { try environment.drafts.save(draft, for: key) }
         catch { model?.inlineError = "The draft count or memory limit has been reached. Keep this conversation open and copy or send the text." }
@@ -278,7 +297,9 @@ final class ConversationController: NSViewController, DraftProviding, ComposerVi
     func composerDraftDidChange() { saveDraft() }
     func composerRemainingDraftBytes() -> Int {
         guard model != nil else { return 0 }
-        return environment.drafts.remainingBytes(for: key) - composer.draftByteCount - (editingPost?.rawValue.utf8.count ?? 0) - Draft(text: "", attachments: selectedFiles).attachmentByteCost
+        return environment.drafts.remainingBytes(for: key) - composer.draftByteCount - (editingPost?.rawValue.utf8.count ?? 0)
+            - (quotedPost?.postID.rawValue.utf8.count ?? 0)
+            - Draft(text: "", attachments: selectedFiles).attachmentByteCost
     }
     func composerDidRefuseInput(_ refusal: ComposerRefusal) {
         model?.inlineError = "Input exceeds a message, draft count, or session memory limit. Existing text has been kept."
@@ -287,6 +308,8 @@ final class ConversationController: NSViewController, DraftProviding, ComposerVi
         guard sendTask == nil, selectionTask == nil, !environment.drafts.isSubmitting(key), let model else { return }
         let key = key, target = target, generation = generation
         let edit = editingPost
+        // Цитата уходит только с обычным сообщением: команды и правки без неё.
+        let quote = edit == nil && !ServerSession.isSlashCommand(text) ? quotedPost : nil
         let attachments = selectedFiles
         let isCommand = edit == nil && ServerSession.isSlashCommand(text)
         if isCommand, !attachments.isEmpty {
@@ -295,6 +318,8 @@ final class ConversationController: NSViewController, DraftProviding, ComposerVi
         }
         saveDraft()
         guard environment.drafts.draft(for: key)?.text == text else { return }
+        // Цитата списывается в момент взятия байтов, чтобы повторная отправка
+        // после сбоя не уехала уже без неё; до этого её держит черновик.
         sendTask = Task { [weak self] in
             guard let self else { return }
             defer {
@@ -325,8 +350,12 @@ final class ConversationController: NSViewController, DraftProviding, ComposerVi
                         }
                     } else {
                         try await model.session.enqueueSend(text: text, channel: target.channelID, rootID: key.rootID,
-                                                            attachments: attachments, reservation: reservation)
+                                                            attachments: attachments, reservation: reservation,
+                                                            quotedPostID: quote?.postID)
                     }
+                    // Успешная постановка в очередь снимает режим цитаты: ответ
+                    // уже уходит с ней, повторная цитата не нужна.
+                    if quote != nil { self.quotedPost = nil }
                     environment.drafts.finishSending(key, reservation: reservation, accepted: true)
                     // Edits and commands never become pending sends.
                     if edit != nil || isCommand { environment.unsentLedger.release(reservation) }
@@ -396,6 +425,14 @@ final class ConversationController: NSViewController, DraftProviding, ComposerVi
     func composerDidRequestCancelMode() {
         guard !environment.drafts.isSubmitting(key) else { return }
         editingPost = nil
+        if quotedPost != nil {
+            // Выход из ответа-цитаты сохраняет набранный текст: баннер снимается,
+            // черновик остаётся обычным (правка, напротив, очищает поле целиком).
+            quotedPost = nil
+            composer.mode = .compose
+            saveDraft()
+            return
+        }
         composer.mode = .compose
         composer.clear()
         saveDraft()
@@ -413,8 +450,25 @@ final class ConversationController: NSViewController, DraftProviding, ComposerVi
         guard post.channelID == target.channelID, !environment.drafts.isSubmitting(key),
               post.message.utf8.count + post.id.rawValue.utf8.count <= composerRemainingDraftBytes() else { return }
         editingPost = post.id
+        quotedPost = nil
         composer.mode = .edit(postID: post.id, original: post.message)
         composer.load(draft: Draft(text: post.message))
+        saveDraft()
+        composer.focus()
+    }
+
+    /// Ответ-цитата (ADR 0057): баннер с цитатой над полем, отправка несёт
+    /// `props.quote_post_id`. Входим из любого состояния композера — набранный
+    /// текст сохраняется; с правкой несовместим (правка приоритетнее), в панели
+    /// треда действие не доходит — там таймлайн не предлагает цитату.
+    private func beginQuoteReply(_ quoted: ReplyContext) {
+        guard !editingStateDiscarded, model?.isDetached == false, model?.requiresAuthentication == false,
+              editingPost == nil, !environment.drafts.isSubmitting(key) else { return }
+        guard quoted.postID.rawValue.utf8.count <= composerRemainingDraftBytes() else {
+            model?.inlineError = "Input exceeds a message, draft count, or session memory limit. Existing text has been kept."
+            return
+        }
+        quotedPost = quoted
         saveDraft()
         composer.focus()
     }
@@ -447,6 +501,7 @@ final class ConversationController: NSViewController, DraftProviding, ComposerVi
     }
     func timeline(perform action: TimelineAction) {
         switch action {
+        case .quoteReply(let quoted): beginQuoteReply(quoted)
         case .reply(let id), .openThread(let id):
             // Внутри открытой панели треда «Ответить» ничего видимого не
             // делало: повторное открытие того же корня — нооп, поле ответа

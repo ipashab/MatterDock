@@ -24,11 +24,33 @@ enum TimelinePostActions {
         return result
     }
 
-    static func entries(for post: PostPresentation) -> [Entry?] {
+    /// Данные для ответа-цитаты (ADR 0057): идентификатор, автор и обрывок
+    /// сообщения снимаются с его же презентации — баннеру композера и меню
+    /// ничего доносить не нужно.
+    static func quoteTarget(for post: PostPresentation) -> ReplyContext? {
+        guard let id = post.postID else { return nil }
+        let excerpt: String
+        switch post.body {
+        case .document(let document, _): excerpt = TimelineBuilder.quoteSnippet(document.plainText)
+        case .system(let text): excerpt = TimelineBuilder.quoteSnippet(text)
+        case .unsupported(_, let fallbackText): excerpt = TimelineBuilder.quoteSnippet(fallbackText)
+        case .deleted: return nil
+        }
+        return ReplyContext(postID: id, authorName: post.author.displayName, snippet: excerpt)
+    }
+
+    static func entries(for post: PostPresentation, allowsQuoteReply: Bool = true) -> [Entry?] {
         guard let id = post.postID else { return [] }
         var sections: [[Entry]] = []
         var first: [Entry] = []
         if post.actions.canReply {
+            // «Ответить» — ответ-цитата в том же канале (как в веб-клиенте
+            // сервера); открытие треда — отдельным пунктом. В панели треда
+            // цитаты нет: там и так ответ в тред.
+            if allowsQuoteReply, let quote = quoteTarget(for: post) {
+                first.append(Entry(title: TimelineStrings.actionReply, action: .quoteReply(quote),
+                                   symbol: "arrowshape.turn.up.left"))
+            }
             first.append(Entry(title: TimelineStrings.actionReplyInThread, action: .reply(post.rootID ?? id),
                                symbol: "arrowshape.turn.up.left"))
         }
@@ -77,7 +99,8 @@ enum TimelinePostActions {
     }
 
     /// Accessibility custom actions: quick reactions first, then every menu entry.
-    static func accessibilityEntries(for post: PostPresentation, quickReactions: [String] = quickReactions) -> [Entry] {
+    static func accessibilityEntries(for post: PostPresentation, allowsQuoteReply: Bool = true,
+                                     quickReactions: [String] = quickReactions) -> [Entry] {
         guard let id = post.postID else { return [] }
         var result: [Entry] = []
         if post.actions.canReact {
@@ -86,7 +109,7 @@ enum TimelinePostActions {
                                     symbol: nil))
             }
         }
-        result.append(contentsOf: entries(for: post).compactMap { $0 })
+        result.append(contentsOf: entries(for: post, allowsQuoteReply: allowsQuoteReply).compactMap { $0 })
         return result
     }
 

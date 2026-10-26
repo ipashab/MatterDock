@@ -8,6 +8,8 @@ import MatterMacCore
 /// weakly by cells (a cell never outlives its table, but it must not pin the controller).
 protocol TimelineCellHost: AnyObject {
     func perform(_ action: TimelineAction)
+    /// Панель канала предлагает ответ-цитату (ADR 0057); панель треда — нет.
+    var allowsQuoteReply: Bool { get }
     /// The quick reactions offered for a message (the user's recent ones first).
     var quickReactions: [String] { get }
     /// Performs a user-chosen action, first writing pasteboard content it implies

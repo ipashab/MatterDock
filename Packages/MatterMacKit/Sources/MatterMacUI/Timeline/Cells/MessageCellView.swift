@@ -293,7 +293,8 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
         configurePending(post: post, fonts: fonts)
         setAccessibilityLabel(TimelineStrings.accessibilityLabel(for: post))
         let quick = host.quickReactions
-        setAccessibilityCustomActions(TimelinePostActions.accessibilityEntries(for: post, quickReactions: quick).map { entry in
+        setAccessibilityCustomActions(TimelinePostActions.accessibilityEntries(for: post, allowsQuoteReply: host.allowsQuoteReply,
+                                                                              quickReactions: quick).map { entry in
             NSAccessibilityCustomAction(name: entry.title) { [weak self] in
                 guard let host = self?.host else { return false }
                 host.performPrepared(entry.action)

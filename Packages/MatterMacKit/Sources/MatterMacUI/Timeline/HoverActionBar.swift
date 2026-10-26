@@ -33,6 +33,7 @@ final class HoverActionBar: NSView {
     private(set) var postID: PostID?
     private(set) var itemID: TimelineItemID?
     private var replyRoot: PostID?
+    private var quote: ReplyContext?
     private(set) var buttons: [(kind: Button, view: NSButton)] = []
     private let background: NSView
     private let content = NSView()
@@ -82,7 +83,7 @@ final class HoverActionBar: NSView {
     /// Rebuilds the buttons for `post`. Returns `false` (and hides) when the post offers
     /// no hover actions (pending, deleted, system).
     @discardableResult
-    func configure(item: TimelineItemID, post: PostPresentation,
+    func configure(item: TimelineItemID, post: PostPresentation, allowsQuoteReply: Bool = true,
                    quickReactions: [String] = TimelinePostActions.quickReactions,
                    emojiText: (String) -> String) -> Bool {
         guard let id = post.postID, post.sendState == nil else { return false }
@@ -103,6 +104,9 @@ final class HoverActionBar: NSView {
         postID = id
         itemID = item
         replyRoot = post.rootID ?? id
+        // «Ответить» на обычном сообщении и корне треда — ответ-цитата (ADR 0057);
+        // в панели треда цитат нет, кнопка там отвечает в тред (панель открыта).
+        quote = allowsQuoteReply ? TimelinePostActions.quoteTarget(for: post) : nil
         for (kind, button) in buttons {
             if case .quickReaction(let name) = kind {
                 let mine = post.reactions.contains { $0.emojiName == name && $0.includesCurrentUser }
@@ -185,7 +189,13 @@ final class HoverActionBar: NSView {
         switch entry.kind {
         case .quickReaction(let name): onAction?(.toggleReaction(postID, emojiName: name))
         case .addReaction: onAction?(.addReaction(postID))
-        case .reply: onAction?(.reply(replyRoot ?? postID))
+        case .reply:
+            // Ответ в уже существующем треде открывает его панель; в остальных
+            // случаях кнопка начинает ответ-цитату (ADR 0057), а без цитат
+            // (панель треда) остаётся прежним действием «ответить в треде».
+            if let root = replyRoot, root != postID { onAction?(.reply(root)) }
+            else if let quote { onAction?(.quoteReply(quote)) }
+            else { onAction?(.reply(postID)) }
         case .more: onMore?(sender)
         }
     }
@@ -194,6 +204,7 @@ final class HoverActionBar: NSView {
         postID = nil
         itemID = nil
         replyRoot = nil
+        quote = nil
         isHidden = true
     }
 

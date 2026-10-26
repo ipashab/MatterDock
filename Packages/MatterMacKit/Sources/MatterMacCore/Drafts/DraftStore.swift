@@ -10,17 +10,26 @@ public struct Draft: Hashable, Sendable {
     /// UTF-16 selection range in `text`, so the composer restores the caret exactly.
     public var selectedRange: NSRange
     public var editingPost: PostID?
+    /// Процитированный пост режима «ответ на сообщение» (ADR 0057): идентификатор
+    /// плюс автор и обрывок для баннера над полем. Снимаются с строки таймлайна
+    /// в момент клика; при возврате в панель баннер восстанавливается как есть.
+    public var quotedPost: ReplyContext?
     public var attachments: [UploadSource]
 
-    public init(text: String, selectedRange: NSRange? = nil, editingPost: PostID? = nil, attachments: [UploadSource] = []) {
+    public init(text: String, selectedRange: NSRange? = nil, editingPost: PostID? = nil,
+                quotedPost: ReplyContext? = nil, attachments: [UploadSource] = []) {
         self.text = text
         self.selectedRange = selectedRange ?? NSRange(location: (text as NSString).length, length: 0)
         self.editingPost = editingPost
+        self.quotedPost = quotedPost
         self.attachments = attachments
     }
 
-    public var isEmpty: Bool { text.isEmpty && editingPost == nil && attachments.isEmpty }
-    public var byteCost: Int { text.utf8.count + (editingPost?.rawValue.utf8.count ?? 0) + attachmentByteCost }
+    public var isEmpty: Bool { text.isEmpty && editingPost == nil && quotedPost == nil && attachments.isEmpty }
+    public var byteCost: Int {
+        text.utf8.count + (editingPost?.rawValue.utf8.count ?? 0) + (quotedPost?.postID.rawValue.utf8.count ?? 0)
+            + attachmentByteCost
+    }
     public var attachmentByteCost: Int { attachments.reduce(0) { $0 + $1.metadataBytes } }
 }
 

@@ -5419,6 +5419,16 @@
         }
       }
     },
+    "Reply to message": {
+      "localizations": {
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ответ на сообщение"
+          }
+        }
+      }
+    },
     "Replying to %@": {
       "localizations": {
         "ru": {

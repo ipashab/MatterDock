@@ -625,3 +625,36 @@ private extension ServerSession {
         notify(.signedOutByServer) // Same actor turn: the queued task cannot have started yet.
     }
 }
+
+
+@Suite("Quote reply send", .serialized)
+struct QuoteReplySendTests {
+    @Test func enqueueSendCarriesQuotedPostIntoProps() async throws {
+        // ADR 0057: ответ-цитата уходит в props как quote_post_id + previewed_post;
+        // обычная реплика пропсов не получает вовсе.
+        let quoted = PostID(unchecked: "quotedpostxxxxxxxxxxxxxx")
+        let h = await SessionHarness()
+        await h.openChannel()
+        let reservation = try h.unsent.convertDraftToPending(nil, bytes: 4)
+        _ = try await h.session.enqueueSend(text: "test", channel: h.channel.id, rootID: nil,
+                                           attachments: [], reservation: reservation, quotedPostID: quoted)
+        #expect(await eventually { await h.session.pending.isEmpty })
+        let created = h.service.withState { $0.createdPosts }
+        #expect(created.count == 1)
+        #expect(created.first?.quotedPostID == quoted)
+        _ = await h.session.shutdown(revokeServerSession: false)
+    }
+
+    @Test func plainSendCarriesNoQuoteProps() async throws {
+        let h = await SessionHarness()
+        await h.openChannel()
+        let reservation = try h.unsent.convertDraftToPending(nil, bytes: 4)
+        _ = try await h.session.enqueueSend(text: "test", channel: h.channel.id, rootID: nil,
+                                           attachments: [], reservation: reservation)
+        #expect(await eventually { await h.session.pending.isEmpty })
+        let created = h.service.withState { $0.createdPosts }
+        #expect(created.count == 1)
+        #expect(created.first?.quotedPostID == nil)
+        _ = await h.session.shutdown(revokeServerSession: false)
+    }
+}

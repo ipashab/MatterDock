@@ -26,6 +26,9 @@ public final class TimelineViewController: NSViewController {
     /// timelines to keep the layout budget global.
     public let layoutCaches: TimelineLayoutCaches
     public private(set) var snapshot: TimelineSnapshot?
+    /// Панель канала предлагает ответ-цитату (ADR 0057); панель треда — нет.
+    /// Читается адаптером меню и ячейками для accessibility-действий.
+    var allowsQuoteReply = true
 
     /// Text scale applied to the system body font (session-only preference).
     public var fontScale: CGFloat = 1 {
@@ -287,6 +290,7 @@ public final class TimelineViewController: NSViewController {
     /// callbacks (queued, latest wins).
     public func apply(_ snapshot: TimelineSnapshot) {
         loadViewIfNeeded()
+        allowsQuoteReply = !snapshot.target.isThread
         if isPerformingUpdate {
             if let pending = pendingSnapshot, Self.sameTimeline(pending, snapshot),
                snapshot.generation <= pending.generation {

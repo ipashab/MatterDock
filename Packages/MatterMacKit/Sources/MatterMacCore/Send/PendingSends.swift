@@ -28,6 +28,8 @@ public struct PendingSend: Sendable {
     public let channelID: ChannelID
     public let rootID: PostID?
     public let message: String
+    /// Процитированный пост «ответа на сообщение» (ADR 0057); `nil` — обычная реплика.
+    public let quotedPostID: PostID?
     public var attachments: [Attachment]
     public var state: State
     public let createdAt: MattermostTimestamp
@@ -39,11 +41,13 @@ public struct PendingSend: Sendable {
     public let reservation: UnsentWorkLedger.Reservation
 
     public init(pendingID: PendingPostID, channelID: ChannelID, rootID: PostID?, message: String,
-                attachments: [Attachment], createdAt: MattermostTimestamp, reservation: UnsentWorkLedger.Reservation) {
+                attachments: [Attachment], createdAt: MattermostTimestamp, reservation: UnsentWorkLedger.Reservation,
+                quotedPostID: PostID? = nil) {
         self.pendingID = pendingID
         self.channelID = channelID
         self.rootID = rootID
         self.message = message
+        self.quotedPostID = quotedPostID
         self.attachments = attachments
         self.state = .queued
         self.createdAt = createdAt

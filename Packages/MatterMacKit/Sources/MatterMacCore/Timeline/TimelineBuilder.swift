@@ -461,12 +461,13 @@ public enum TimelineBuilder {
     }
 
     /// Обрывок цитаты для карточки: без разметки, до 96 символов — карточка
-    /// просторнее чипа треда (42), длинные цитаты режет уже лейбл.
-    static func quoteSnippet(_ message: String) -> String {
+    /// просторнее чипа треда (42), длинные цитаты режет уже лейбл. Публичный:
+    /// тот же обрывок показывает баннер ответа в композере (ADR 0057).
+    public static func quoteSnippet(_ message: String) -> String {
         snippet(message, limit: quoteSnippetLimit)
     }
 
-    static let quoteSnippetLimit = 96
+    public static let quoteSnippetLimit = 96
 
     /// Последний ответ треда из локального стора канала (сбора превью чипа треда,
     /// рендер: «N ответов · Имя: обрывок…»). Ответы приходят теми же страницами
