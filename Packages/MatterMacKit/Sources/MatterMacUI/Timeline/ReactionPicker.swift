@@ -23,6 +23,9 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
     var customPage: ((Int, String) async -> [CustomEmoji])?
     var customImage: ((String) async -> ImagePipeline.Decoded?)?
     var customLimit = ResourceBudget.standard.customEmojiPickerEntries
+    /// Тактовик GIF-эмодзи сетки: один таймер на видимые ячейки (ADR 0058).
+    /// Сетка показывает десятки ячеек, лимит общий таймлайна здесь тесен.
+    let emojiAnimator = EmojiFrameAnimator()
     private var customEntries: [Entry] = []
     private(set) var customTask: Task<Void, Never>?
     private var customGeneration = 0
@@ -82,6 +85,7 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
     }
 
     override func loadView() {
+        emojiAnimator.maximumTargets = 256
         let root = NSView(frame: NSRect(origin: .zero, size: Self.preferredSize))
         searchField.placeholderString = String(localized: "Search emoji")
         searchField.setAccessibilityLabel(String(localized: "Search emoji"))
@@ -297,7 +301,8 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
         holdPreviewPath = path
         let entry = sections[path.section].emoji[path.item]
         holdPreview.show(glyph: entry.customID == nil ? item.previewGlyph : nil,
-                         name: entry.name, image: item.previewImage)
+                         name: entry.name, image: item.previewImage,
+                         animation: item.previewAnimation)
         let cell = collectionView.convert(item.view.frame, to: view)
         holdPreview.frame = Self.holdPreviewFrame(cell: cell, bounds: view.bounds, side: EmojiHoldPreview.side)
         holdPreview.isHidden = false
@@ -306,6 +311,8 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
     func hideEmojiPreview() {
         holdPreviewPath = nil
         holdPreview.isHidden = true
+        // Таймер превью не должен тикать, пока превью скрыто.
+        holdPreview.stopAnimation()
     }
 
     /// Ячейка, для которой сейчас превью (nil — скрыто).
@@ -354,6 +361,7 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
         -> NSCollectionViewItem {
         let item = collectionView.makeItem(withIdentifier: EmojiPickerItem.identifier, for: indexPath)
         if let item = item as? EmojiPickerItem {
+            item.emojiAnimator = emojiAnimator
             item.configure(sections[indexPath.section].emoji[indexPath.item], imageLoader: customImage)
             item.isCurrent = indexPath == selection
         }
@@ -467,7 +475,10 @@ final class EmojiHoldPreview: NSView {
     private let background: NSView
     private let content = NSView()
     private let glyphLabel = NSTextField(labelWithString: "")
-    private let emojiView = NSImageView()
+    private let emojiView = AnimatedImageView(frame: .zero)
+    /// Собственный тактовик превью: цель одна, таймер живёт только пока
+    /// превью показано.
+    private let emojiAnimator = EmojiFrameAnimator()
     override init(frame frameRect: NSRect) {
         if #available(macOS 26, *) {
             let glass = NSGlassEffectView()
@@ -495,7 +506,6 @@ final class EmojiHoldPreview: NSView {
         glyphLabel.alignment = .center
         glyphLabel.font = .systemFont(ofSize: Self.glyphFontSize)
         emojiView.imageScaling = .scaleProportionallyUpOrDown
-        emojiView.animates = true
         glyphLabel.isHidden = true
         emojiView.isHidden = true
         setAccessibilityElement(false)
@@ -507,12 +517,18 @@ final class EmojiHoldPreview: NSView {
 
     /// Глиф — для системного эмодзи; картинка — для кастомного (если подгружена);
     /// иначе — короткая подпись `:name:`.
-    func show(glyph: String?, name: String, image: NSImage?) {
-        if let image {
+    func show(glyph: String?, name: String, image: NSImage?, animation: ImagePipeline.Animation? = nil) {
+        if let animation {
+            emojiView.isHidden = false
+            glyphLabel.isHidden = true
+            emojiView.setAnimation(animation, animator: emojiAnimator)
+        } else if let image {
+            emojiView.setAnimation(nil, animator: nil)
             emojiView.image = image
             emojiView.isHidden = false
             glyphLabel.isHidden = true
         } else {
+            emojiView.setAnimation(nil, animator: nil)
             emojiView.image = nil
             emojiView.isHidden = true
             let text = glyph ?? ":\(name):"
@@ -533,6 +549,12 @@ final class EmojiHoldPreview: NSView {
         emojiView.frame = NSRect(origin: origin, size: NSSize(width: side, height: side))
     }
 
+    /// Останавливает анимацию скрытого превью (таймер тактовика гаснет).
+    func stopAnimation() {
+        emojiView.setAnimation(nil, animator: nil)
+        emojiView.image = nil
+    }
+
     /// Только для тестов: что сейчас показано в превью.
     var displayedText: String { glyphLabel.isHidden ? "" : glyphLabel.stringValue }
     var displayedImage: NSImage? { emojiView.isHidden ? nil : emojiView.image }
@@ -549,7 +571,9 @@ final class EmojiPickerItem: NSCollectionViewItem {
     private static let imageRetryDelays: [Duration] = [.milliseconds(400), .milliseconds(900),
                                                        .seconds(2), .seconds(4), .seconds(8)]
     private let glyphLabel = NSTextField(labelWithString: "")
-    private let customImageView = NSImageView()
+    private let customImageView = AnimatedImageView(frame: .zero)
+    /// Тактовик пикера (общий на все ячейки), задаётся при конфигурации.
+    var emojiAnimator: EmojiFrameAnimator?
     private var imageTask: Task<Void, Never>?
     private var decodedImage: ImagePipeline.Decoded?
     private var imageID: String?
@@ -559,6 +583,7 @@ final class EmojiPickerItem: NSCollectionViewItem {
     /// Контент превью по удержанию: глиф и подгруженная картинка кастомного.
     var previewGlyph: String { glyphLabel.stringValue }
     var previewImage: NSImage? { showsCustomImage ? customImageView.image : nil }
+    var previewAnimation: ImagePipeline.Animation? { showsCustomImage ? customImageView.animation : nil }
 
 
     override func loadView() {
@@ -569,8 +594,6 @@ final class EmojiPickerItem: NSCollectionViewItem {
         glyphLabel.setAccessibilityElement(false)
         customImageView.frame = NSRect(x: 5, y: 5, width: 22, height: 22)
         customImageView.imageScaling = .scaleProportionallyUpOrDown
-        // GIF-эмодзи проигрывают все кадры (ADR 0058); у статики свойств нет.
-        customImageView.animates = true
         customImageView.setAccessibilityElement(false)
         cell.addSubview(customImageView)
         cell.addSubview(glyphLabel)
@@ -587,6 +610,7 @@ final class EmojiPickerItem: NSCollectionViewItem {
         imageTask?.cancel()
         imageTask = nil
         imageID = nil
+        customImageView.setAnimation(nil, animator: nil)
         customImageView.image = nil
         decodedImage = nil
         showsCustomImage = false
@@ -613,8 +637,11 @@ final class EmojiPickerItem: NSCollectionViewItem {
                     guard !Task.isCancelled, let self, imageID == id else { return }
                     if let decoded = await imageLoader(id) {
                         decodedImage = decoded
-                        customImageView.image = decoded.animation?.nsImage
-                            ?? NSImage(cgImage: decoded.image, size: .zero)
+                        if let animation = decoded.animation {
+                            customImageView.setAnimation(animation, animator: emojiAnimator)
+                        } else {
+                            customImageView.image = NSImage(cgImage: decoded.image, size: .zero)
+                        }
                         glyphLabel.isHidden = true
                         showsCustomImage = true
                         imageTask = nil

@@ -23,7 +23,10 @@ final class ReactionHoverPanel: NSView {
     private let content = NSView()
     private let label = NSTextField(labelWithAttributedString: NSAttributedString(string: ""))
     private let emojiGlyph = NSTextField(labelWithString: "")
-    private let emojiImage = NSImageView()
+    private let emojiImage = AnimatedImageView(frame: .zero)
+    /// Собственный тактовик панели: цель одна, таймер живёт, пока панель
+    /// показывает GIF-эмодзи (ADR 0058).
+    private let emojiAnimator = EmojiFrameAnimator()
 
     override var isFlipped: Bool { true }
 
@@ -68,7 +71,6 @@ final class ReactionHoverPanel: NSView {
         emojiGlyph.isHidden = true
         content.addSubview(emojiGlyph)
         emojiImage.imageScaling = .scaleProportionallyUpOrDown
-        emojiImage.animates = true
         emojiImage.isHidden = true
         content.addSubview(emojiImage)
         isHidden = true
@@ -82,7 +84,7 @@ final class ReactionHoverPanel: NSView {
     /// Первая строка — кто отреагировал, вторая — подсказка про клик; слева —
     /// крупный эмодзи (глиф или подоспевшая картинка кастомного).
     func configure(item: TimelineItemID, emojiName: String, names: String, hint: String,
-                   glyph: String, image: NSImage?) {
+                   glyph: String, image: NSImage?, animation: ImagePipeline.Animation? = nil) {
         guard itemID != item || self.emojiName != emojiName else { return }
         itemID = item
         self.emojiName = emojiName
@@ -97,21 +99,32 @@ final class ReactionHoverPanel: NSView {
         label.attributedStringValue = text
         setAccessibilityLabel(names + ", " + hint)
         emojiGlyph.stringValue = glyph
-        emojiImage.image = image
-        showsImage = image != nil
+        setEmojiImage(image, animation: animation)
+        showsImage = image != nil || animation != nil
         emojiGlyph.isHidden = showsImage
         emojiImage.isHidden = !showsImage
         needsLayout = true
     }
 
     /// Картинка кастомного эмодзи подоспела после показа панели.
-    func updateEmojiImage(_ image: NSImage?) {
-        guard itemID != nil, let image, !showsImage else { return }
-        emojiImage.image = image
+    func updateEmojiImage(_ image: NSImage?, animation: ImagePipeline.Animation? = nil) {
+        guard itemID != nil, image != nil || animation != nil, !showsImage else { return }
+        setEmojiImage(image, animation: animation)
         showsImage = true
         emojiGlyph.isHidden = true
         emojiImage.isHidden = false
         needsLayout = true
+    }
+
+    /// Один путь для глифа/статики/анимации: анимация сильнее статичной
+    /// картинки, её снимает тактовик панели.
+    private func setEmojiImage(_ image: NSImage?, animation: ImagePipeline.Animation?) {
+        if let animation {
+            emojiImage.setAnimation(animation, animator: emojiAnimator)
+        } else {
+            emojiImage.setAnimation(nil, animator: nil)
+            emojiImage.image = image
+        }
     }
 
     private var showsImage = false
@@ -124,6 +137,7 @@ final class ReactionHoverPanel: NSView {
         itemID = nil
         emojiName = nil
         emojiGlyph.stringValue = ""
+        emojiImage.setAnimation(nil, animator: nil)
         emojiImage.image = nil
         showsImage = false
         isHidden = true

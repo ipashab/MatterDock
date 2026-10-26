@@ -62,6 +62,12 @@ public actor ImagePipeline {
         /// Сумма задержек — длительность полного цикла.
         public let duration: Double
 
+        public init(frames: [CGImage], delays: [Double], duration: Double) {
+            self.frames = frames
+            self.delays = delays
+            self.duration = duration
+        }
+
         /// Кадр, видимый через `elapsed` секунд от начала цикла (зациклено).
         public func frameIndex(at elapsed: Double) -> Int {
             guard frames.count > 1, duration > 0 else { return 0 }

@@ -22,7 +22,7 @@ final class EmojiFrameAnimator {
     static let frameInterval: TimeInterval = 1.0 / 15.0
 
     /// Верхняя граница одновременно анимируемых единиц.
-    let maximumTargets = 64
+    var maximumTargets = 64
 
     private var targets: [WeakTarget] = []
     private var timer: Timer?
@@ -68,14 +68,35 @@ final class EmojiFrameAnimator {
     }
 }
 
-extension ImagePipeline.Animation {
-    /// NSImage со всеми кадрами — для `NSImageView.animates` (пикер эмодзи и
-    /// превью по удержанию): AppKit сам перебирает кадры по задержкам GIF.
-    var nsImage: NSImage {
-        let image = NSImage(size: NSSize(width: frames[0].width, height: frames[0].height))
-        for frame in frames where image.representations.count < ImagePipeline.maximumAnimationFrames {
-            image.addRepresentation(NSBitmapImageRep(cgImage: frame))
+/// NSImageView с кадрами GIF-эмодзи (ADR 0058): представления из CGImage не
+/// несут длительности кадра, поэтому `NSImageView.animates` их не листает —
+/// перебор ведёт общий `EmojiFrameAnimator`, меняя показанный кадр.
+@MainActor
+final class AnimatedImageView: NSImageView, EmojiAnimationTarget {
+    private(set) var animation: ImagePipeline.Animation?
+    private weak var animator: EmojiFrameAnimator?
+    private var animationStartedAt: Double = 0
+    private var animationFrameIndex = 0
+
+    /// Переключает источник: анимация — кадры по тактовику, `nil` — статичная
+    /// картинка (или пусто, если и `image` не задана).
+    func setAnimation(_ animation: ImagePipeline.Animation?, animator: EmojiFrameAnimator?) {
+        self.animator?.unregister(self)
+        self.animator = animator
+        self.animation = animation
+        animationFrameIndex = 0
+        animationStartedAt = CACurrentMediaTime()
+        if let animation {
+            image = NSImage(cgImage: animation.frames[0], size: .zero)
+            animator?.register(self)
         }
-        return image
+    }
+
+    func advanceAnimation(to time: Double) {
+        guard let animation else { return }
+        let index = animation.frameIndex(at: time - animationStartedAt)
+        guard index != animationFrameIndex else { return }
+        animationFrameIndex = index
+        image = NSImage(cgImage: animation.frames[index], size: .zero)
     }
 }

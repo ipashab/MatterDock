@@ -581,8 +581,7 @@ public final class TimelineViewController: NSViewController {
         guard isViewLoaded, imageDemand[request] != nil else { return }
         if reactionPanel.itemID != nil, reactionPanelRequest == request {
             // GIF-эмодзи приходят всеми кадрами (ADR 0058); статика — одним.
-            let animation = animation(for: request)
-            reactionPanel.updateEmojiImage(animation?.nsImage ?? image(for: request))
+            reactionPanel.updateEmojiImage(image(for: request), animation: animation(for: request))
         }
         tableView.enumerateAvailableRowViews { rowView, _ in
             (rowView.view(atColumn: 0) as? MessageCellView)?.imageDidBecomeAvailable(request)
