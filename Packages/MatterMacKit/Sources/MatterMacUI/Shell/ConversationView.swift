@@ -447,7 +447,13 @@ final class ConversationController: NSViewController, DraftProviding, ComposerVi
     }
     func timeline(perform action: TimelineAction) {
         switch action {
-        case .reply(let id), .openThread(let id): model?.openThread(root: id)
+        case .reply(let id), .openThread(let id):
+            // Внутри открытой панели треда «Ответить» ничего видимого не
+            // делало: повторное открытие того же корня — нооп, поле ответа
+            // оставалось без фокуса. Теперь, как в веб-клиенте, действие
+            // фокусирует поле ответа; чужой корень (карточка-контекст)
+            // открывается как отдельный тред (репорт 2026-10-23).
+            if root == id { composer.focus() } else { model?.openThread(root: id) }
         case .jumpToPost(let id): timeline.reveal(post: id)
         case .openLink(let link):
             // Links into this server open inside MatterMac; everything else in the browser.

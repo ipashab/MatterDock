@@ -513,6 +513,39 @@ struct ConversationIntegrationTests {
         await h.close()
     }
 
+    @Test func replyInsideOpenThreadFocusesComposerInsteadOfReopening() async throws {
+        // Репорт 2026-10-23: «Ответить» в панели открытого треда визуально
+        // ничего не делал — заново открывал тот же корень. Теперь он
+        // фокусирует поле ответа, как в веб-клиенте; в канале «Ответить»
+        // по-прежнему открывает панель треда.
+        let root = CoreFixtures.post(1, channel: CoreFixtures.channel(1).id, message: "Thread root")
+        let reply = CoreFixtures.post(2, channel: root.channelID, message: "Existing reply", rootID: root.id)
+        let h = try await Harness(posts: [root, reply])
+        h.model.openThread(root: root.id)
+        #expect(await waitUntil { h.model.thread?.target == .thread(root: root.id, channel: root.channelID) })
+        let pane = ConversationController(session: h.model, target: .thread(root: root.id, channel: root.channelID))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 480, height: 640),
+                              styleMask: [.titled, .resizable], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.isRestorable = false
+        window.contentViewController = pane
+        window.makeKeyAndOrderFront(nil)
+        defer { window.close() }
+        #expect(window.firstResponder !== pane.composer.textView, "до действия поле без фокуса")
+        let threadLoads = h.service.withState { $0.calls.filter { $0 == "thread" }.count }
+        // Hover-действие и меню передают корень треда; панель уже открыта.
+        pane.timeline(perform: .reply(root.id))
+        #expect(window.firstResponder === pane.composer.textView, "«Ответить» в треде фокусирует поле ответа")
+        #expect(h.service.withState { $0.calls.filter { $0 == "thread" }.count } == threadLoads,
+                "переоткрытия треда нет")
+        // В канале то же действие открывает панель треда (прежнее поведение).
+        h.model.closeThread()
+        #expect(await waitUntil { h.model.thread == nil })
+        h.controller.timeline(perform: .reply(root.id))
+        #expect(await waitUntil { h.model.thread?.target == .thread(root: root.id, channel: root.channelID) })
+        await h.close()
+    }
+
     @Test func openingDirectMessageResetsThreadAndPublishesMatchingHistory() async throws {
         let h = try await Harness()
         let root = CoreFixtures.post(1, channel: h.first.id)

@@ -22,9 +22,9 @@ nonisolated public enum BubbleScheme: String, CaseIterable, Identifiable, Sendab
     public var id: String { rawValue }
 
     /// Текущая схема процесса. Мьютекс нужен из-за strict concurrency:
-    /// читают провайдеры цветов, пишет — настройка (после применения — со
-    /// следующего перерендера кэшированных запусков, поэтому в UI есть
-    /// пометка о перезапуске).
+    /// читают `@Sendable`-провайдеры цветов при каждом резолве, пишет
+    /// MainActor (`LocalSettings.init` и биндинг панели); смена видна со
+    /// следующей перерисовки видимых строк.
     private static let lock = OSAllocatedUnfairLock(initialState: BubbleScheme.classic)
     static var selected: BubbleScheme { lock.withLock { $0 } }
     static func select(_ scheme: BubbleScheme) { lock.withLock { $0 = scheme } }
@@ -77,8 +77,8 @@ nonisolated public enum BubbleScheme: String, CaseIterable, Identifiable, Sendab
     }
 
     func outgoingCodeBackground(isDark: Bool, highContrast: Bool) -> NSColor {
-        // На светлых схемах код-блок светлеет пузыря, на тёмных — светлеет
-        // белёсой вуалью (как в `classic`).
+        // Светлая тема — код-блок светлее пузыря (белёсый слой), тёмная —
+        // белёсая вуаль поверх фона схемы (как в `classic`).
         switch self {
         case .classic:
             isDark ? .white.withAlphaComponent(highContrast ? 0.22 : 0.14)
