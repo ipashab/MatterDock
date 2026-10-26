@@ -70,7 +70,6 @@ final class ReactionHoverPanel: NSView {
         emojiGlyph.alignment = .center
         emojiGlyph.isHidden = true
         content.addSubview(emojiGlyph)
-        emojiImage.imageScaling = .scaleProportionallyUpOrDown
         emojiImage.isHidden = true
         content.addSubview(emojiImage)
         isHidden = true

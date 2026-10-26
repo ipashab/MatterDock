@@ -525,6 +525,11 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
                 let request = TimelineImageRequest.customEmoji(id)
                 emojiRequests.insert(request)
                 view.image = resolveImage(request)
+                // Кэшированный GIF анимируем сразу, не дожидаясь setEmojiImage.
+                if let animation = host.animation(for: request) {
+                    view.animation = animation
+                    host.emojiAnimator.register(view)
+                }
             }
             view.frame = rowLayout.reactions[index]
             view.isHidden = false
@@ -703,6 +708,24 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
 
     var hasOutstandingImageRequests: Bool { !outstandingRequests.isEmpty }
     var displayedAvatarImage: NSImage? { avatarView.image }
+
+    /// Только для тестов: индекс кадра первого GIF-вложения в тексте.
+    func bodyEmojiAttachmentIndexForTesting() -> Int? {
+        guard let storage = bodyTextView.textStorage else { return nil }
+        var result: Int?
+        storage.enumerateAttribute(.matterMacCustomEmoji, in: NSRange(location: 0, length: storage.length)) { value, range, stop in
+            guard let attachment = storage.attribute(.attachment, at: range.location, effectiveRange: nil) as? NSTextAttachment,
+                  let cell = attachment.attachmentCell as? AnimatedEmojiAttachmentCell else { return }
+            result = cell.lastIndexForTesting
+            stop.pointee = true
+        }
+        return result
+    }
+
+    /// Только для тестов: индекс кадра первой чип-реакции с анимацией.
+    func reactionChipFrameIndexForTesting() -> Int? {
+        reactionViews.first { $0.animation != nil }?.animationFrameIndexForTesting
+    }
 
     /// Releases per-cell image demand; called when the row leaves the table.
     func didEndDisplay() {

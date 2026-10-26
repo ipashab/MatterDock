@@ -45,8 +45,16 @@ final class EmojiFrameAnimator {
 
     /// Для тестов: один такт по явному времени, без ожидания таймера.
     func step(at time: Double) {
+        stepCount += 1
         targets.removeAll { $0.target == nil }
         for target in targets { target.target?.advanceAnimation(to: time) }
+    }
+
+    /// Только для тестов: сколько раз тикал тактовик.
+    private(set) var stepCount = 0
+    /// Только для тестов: сколько живых целей сейчас зарегистрировано.
+    var targetCountForTesting: Int {
+        targets.compactMap { $0.target }.count
     }
 
     private func ensureTimer() {
@@ -68,15 +76,24 @@ final class EmojiFrameAnimator {
     }
 }
 
-/// NSImageView с кадрами GIF-эмодзи (ADR 0058): представления из CGImage не
-/// несут длительности кадра, поэтому `NSImageView.animates` их не листает —
-/// перебор ведёт общий `EmojiFrameAnimator`, меняя показанный кадр.
+/// View с кадрами GIF-эмодзи (ADR 0058): рисует текущий кадр сам — как чип
+/// реакции — и листает их по тактовику. `NSImageView.animates` не подходит:
+/// представления из CGImage не несут длительности кадра, и AppKit их не листает.
 @MainActor
-final class AnimatedImageView: NSImageView, EmojiAnimationTarget {
+final class AnimatedImageView: NSView, EmojiAnimationTarget {
+    /// Статичная картинка (первый кадр), показывается пока анимации нет.
+    var image: NSImage? { didSet { needsDisplay = true } }
     private(set) var animation: ImagePipeline.Animation?
     private weak var animator: EmojiFrameAnimator?
     private var animationStartedAt: Double = 0
     private var animationFrameIndex = 0
+
+    override init(frame frameRect: NSRect) {
+        super.init(frame: frameRect)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not supported") }
 
     /// Переключает источник: анимация — кадры по тактовику, `nil` — статичная
     /// картинка (или пусто, если и `image` не задана).
@@ -90,6 +107,27 @@ final class AnimatedImageView: NSImageView, EmojiAnimationTarget {
             image = NSImage(cgImage: animation.frames[0], size: .zero)
             animator?.register(self)
         }
+        needsDisplay = true
+    }
+
+    override func draw(_ dirtyRect: NSRect) {
+        let cgImage: CGImage?
+        if let animation {
+            cgImage = animation.frames[min(animationFrameIndex, animation.frames.count - 1)]
+        } else {
+            cgImage = image?.cgImage(forProposedRect: nil, context: nil, hints: nil)
+        }
+        guard let cgImage else { return }
+        // Пропорционально вписываем квадрат эмодзи в границы view.
+        let boundsSize = bounds.size
+        let source = CGSize(width: cgImage.width, height: cgImage.height)
+        let scale = min(boundsSize.width / source.width, boundsSize.height / source.height)
+        let target = CGSize(width: source.width * scale, height: source.height * scale)
+        let rect = NSRect(x: (boundsSize.width - target.width) / 2, y: (boundsSize.height - target.height) / 2,
+                          width: target.width, height: target.height)
+        NSImage(cgImage: cgImage, size: .zero).draw(in: rect, from: .zero,
+                                                    operation: .sourceOver, fraction: 1,
+                                                    respectFlipped: true, hints: nil)
     }
 
     func advanceAnimation(to time: Double) {
@@ -97,6 +135,9 @@ final class AnimatedImageView: NSImageView, EmojiAnimationTarget {
         let index = animation.frameIndex(at: time - animationStartedAt)
         guard index != animationFrameIndex else { return }
         animationFrameIndex = index
-        image = NSImage(cgImage: animation.frames[index], size: .zero)
+        needsDisplay = true
     }
+
+    /// Только для тестов.
+    var animationFrameIndexForTesting: Int { animationFrameIndex }
 }

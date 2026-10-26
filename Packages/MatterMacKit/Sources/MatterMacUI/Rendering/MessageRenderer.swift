@@ -562,6 +562,14 @@ final class AnimatedEmojiAttachmentCell: CustomEmojiAttachmentCell, EmojiAnimati
     private let startedAt: Double
     private var lastIndex = 0
     private var lastFrame: NSRect?
+    /// TextKit передаёт view параметром draw, свойство controlView у вложений
+    /// может оставаться nil — храним то, что реально рисовало ячейку.
+    private weak var drawingView: NSView?
+    /// Только для тестов: advance реально пометил зону грязной.
+    private(set) var didInvalidateForTesting = false
+    /// Только для тестов: диагностика состояния ячейки.
+    var lastIndexForTesting: Int { lastIndex }
+    var lastFrameForTesting: NSRect? { lastFrame }
 
     init(bounds: NSRect, animation: ImagePipeline.Animation) {
         self.animation = animation
@@ -574,6 +582,8 @@ final class AnimatedEmojiAttachmentCell: CustomEmojiAttachmentCell, EmojiAnimati
 
     override func draw(withFrame cellFrame: NSRect, in controlView: NSView?) {
         lastFrame = cellFrame
+        drawingView = controlView
+        didInvalidateForTesting = false
         super.draw(withFrame: cellFrame, in: controlView)
     }
 
@@ -582,6 +592,9 @@ final class AnimatedEmojiAttachmentCell: CustomEmojiAttachmentCell, EmojiAnimati
         guard index != lastIndex else { return }
         lastIndex = index
         image = NSImage(cgImage: animation.frames[index], size: .zero)
-        controlView?.setNeedsDisplay(lastFrame ?? .zero)
+        if let lastFrame {
+            drawingView?.setNeedsDisplay(lastFrame)
+            didInvalidateForTesting = true
+        }
     }
 }

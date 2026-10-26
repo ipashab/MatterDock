@@ -387,6 +387,9 @@ final class ReactionChipView: TimelinePressableView, EmojiAnimationTarget {
         // Чип маленький: перерисовка целиком дешевле вычисления зоны эмодзи.
         needsDisplay = true
     }
+
+    /// Только для тестов.
+    var animationFrameIndexForTesting: Int { animationFrameIndex }
 }
 
 final class FileChipView: TimelinePressableView {

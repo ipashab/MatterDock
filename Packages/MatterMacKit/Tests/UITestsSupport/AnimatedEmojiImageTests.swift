@@ -5,9 +5,9 @@ import MatterMacCore
 import TestSupport
 @testable import MatterMacUI
 
-/// NSImageView с кадрами GIF-эмодзи (ADR 0058): тактовик меняет показанный
-/// кадр по задержкам; представления из CGImage длительность не несут, поэтому
-/// `NSImageView.animates` здесь не участвует.
+/// View с кадрами GIF-эмодзи (ADR 0058): тактовик листает кадры по задержкам;
+/// представления из CGImage длительность не несут, поэтому `NSImageView.animates`
+/// здесь не участвует.
 @MainActor
 @Suite("Animated emoji views")
 struct AnimatedEmojiImageTests {
@@ -21,21 +21,17 @@ struct AnimatedEmojiImageTests {
         let animation = try await twoFrameAnimation()
         let animator = EmojiFrameAnimator()
         let view = AnimatedImageView(frame: NSRect(x: 0, y: 0, width: 22, height: 22))
-        func shownFrameID() -> ObjectIdentifier? {
-            guard let cgImage = view.image?.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return nil }
-            return ObjectIdentifier(cgImage)
-        }
-
         view.setAnimation(animation, animator: animator)
-        #expect(shownFrameID() == ObjectIdentifier(animation.frames[0]))
-        animator.step(at: 0)
-        #expect(shownFrameID() == ObjectIdentifier(animation.frames[0]), "до конца первого кадра картинка не меняется")
-        animator.step(at: 0.25)
-        #expect(shownFrameID() == ObjectIdentifier(animation.frames[1]), "на втором кадре картинка сменена")
-        animator.step(at: 0.65) // 0.65 mod 0.3 = 0.05 — снова первый кадр
-        #expect(shownFrameID() == ObjectIdentifier(animation.frames[0]), "цикл замкнулся на первый кадр")
+        let start = CACurrentMediaTime()
+        #expect(view.animationFrameIndexForTesting == 0)
+        animator.step(at: start + 0.05)
+        #expect(view.animationFrameIndexForTesting == 0, "до конца первого кадра кадр не меняется")
+        animator.step(at: start + 0.25)
+        #expect(view.animationFrameIndexForTesting == 1, "на втором кадре индекс сменён")
+        animator.step(at: start + 0.65) // 0.65 mod 0.3 = 0.05 — снова первый кадр
+        #expect(view.animationFrameIndexForTesting == 0, "цикл замкнулся на первый кадр")
         view.setAnimation(nil, animator: nil)
-        animator.step(at: 1.0)
+        animator.step(at: start + 1.0)
         #expect(view.animation == nil)
     }
 
@@ -46,9 +42,10 @@ struct AnimatedEmojiImageTests {
         view.setAnimation(animation, animator: animator)
         var probe: AnimatedImageView? = AnimatedImageView(frame: .zero)
         probe?.setAnimation(animation, animator: animator)
-        animator.step(at: 0)
+        let start = CACurrentMediaTime()
+        animator.step(at: start)
         probe = nil // слабая цель исчезла — тактовик не должен остановиться на живой ячейке
-        animator.step(at: 0.15)
+        animator.step(at: start + 0.15)
         #expect(view.animation != nil)
         view.setAnimation(nil, animator: nil)
     }

@@ -505,7 +505,6 @@ final class EmojiHoldPreview: NSView {
         content.addSubview(emojiView)
         glyphLabel.alignment = .center
         glyphLabel.font = .systemFont(ofSize: Self.glyphFontSize)
-        emojiView.imageScaling = .scaleProportionallyUpOrDown
         glyphLabel.isHidden = true
         emojiView.isHidden = true
         setAccessibilityElement(false)
@@ -593,7 +592,6 @@ final class EmojiPickerItem: NSCollectionViewItem {
         glyphLabel.translatesAutoresizingMaskIntoConstraints = false
         glyphLabel.setAccessibilityElement(false)
         customImageView.frame = NSRect(x: 5, y: 5, width: 22, height: 22)
-        customImageView.imageScaling = .scaleProportionallyUpOrDown
         customImageView.setAccessibilityElement(false)
         cell.addSubview(customImageView)
         cell.addSubview(glyphLabel)
