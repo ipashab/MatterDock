@@ -19,6 +19,8 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
     struct Section: Equatable {
         let title: String
         let emoji: [Entry]
+        /// Символ вкладки категории (ADR 0059); `nil` у разделов без вкладки.
+        var symbolName: String? = nil
     }
     var customPage: ((Int, String) async -> [CustomEmoji])?
     var customImage: ((String) async -> ImagePipeline.Decoded?)?
@@ -39,10 +41,11 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
     static let spacing: CGFloat = 2
     static let inset: CGFloat = 8
     static let headerHeight: CGFloat = 22
+    static let categoryBarHeight: CGFloat = 22
     /// Search results shown at most (the catalog bounds the work as well).
     static let maximumResults = 90
     static var preferredSize: NSSize {
-        NSSize(width: inset * 2 + CGFloat(columns) * itemSize.width + CGFloat(columns - 1) * spacing, height: 360)
+        NSSize(width: inset * 2 + CGFloat(columns) * itemSize.width + CGFloat(columns - 1) * spacing, height: 388)
     }
 
     /// Called with the chosen emoji's short name (as sent to the server).
@@ -52,9 +55,16 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
     let catalog: EmojiCatalog
     let searchField = NSSearchField()
     let collectionView = EmojiGridView(frame: .zero)
+    private(set) var scrollView: NSScrollView!
     private let emptyLabel = NSTextField(labelWithString: String(localized: "No matching emoji"))
     /// Панель превью по удержанию (для тестов).
     let holdPreview = EmojiHoldPreview()
+    /// Вкладки категорий под поиском (ADR 0059): клик прокручивает сетку
+    /// к разделу, активная следует за скроллом. Скрыты во время поиска.
+    let categoryBar = NSStackView(views: [])
+    private(set) var categoryButtons: [NSButton] = []
+    private(set) var customCategoryButton: NSButton?
+    private var activeCategory: Int?
     private(set) var sections: [Section] = []
     private(set) var selection: IndexPath?
     /// Last VoiceOver announcement (the selected emoji's name), for tests.
@@ -69,9 +79,11 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
             names.append(name)
         }
         let frequent = names.compactMap(catalog.emoji(named:))
-        browseSections = [Section(title: String(localized: "Frequently Used"), emoji: frequent.map(Entry.init))]
+        browseSections = [Section(title: String(localized: "Frequently Used"), emoji: frequent.map(Entry.init),
+                                  symbolName: "clock")]
             + EmojiCategory.allCases.filter(\.isShownInPicker).map {
-                Section(title: $0.displayName, emoji: catalog.pickerEmoji(in: $0).map(Entry.init))
+                Section(title: $0.displayName, emoji: catalog.pickerEmoji(in: $0).map(Entry.init),
+                        symbolName: $0.symbolName)
             }
         super.init(nibName: nil, bundle: nil)
     }
@@ -111,11 +123,26 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
                                 withIdentifier: EmojiPickerHeader.identifier)
         collectionView.setAccessibilityLabel(String(localized: "Emoji"))
 
+        categoryBar.orientation = .horizontal
+        categoryBar.alignment = .centerY
+        categoryBar.spacing = 6
+        categoryBar.edgeInsets = NSEdgeInsets()
+        categoryButtons = browseSections.indices.map { index in
+            makeCategoryButton(index, symbol: browseSections[index].symbolName ?? "circle",
+                               name: browseSections[index].title)
+        }
+        // Вкладка «Пользовательские» появляется, когда серверная страница загрузилась.
+        customCategoryButton = makeCategoryButton(browseSections.count, symbol: "sparkles",
+                                                  name: String(localized: "Custom"))
+        customCategoryButton?.isHidden = true
+
         let scrollView = NSScrollView()
+        self.scrollView = scrollView
         scrollView.documentView = collectionView
         scrollView.hasVerticalScroller = true
         scrollView.drawsBackground = false
         scrollView.translatesAutoresizingMaskIntoConstraints = false
+        installScrollTracking()
 
         emptyLabel.textColor = .secondaryLabelColor
         emptyLabel.alignment = .center
@@ -123,6 +150,7 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
         emptyLabel.translatesAutoresizingMaskIntoConstraints = false
 
         root.addSubview(searchField)
+        root.addSubview(categoryBar)
         root.addSubview(scrollView)
         root.addSubview(emptyLabel)
         collectionView.picker = self
@@ -134,7 +162,11 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
             searchField.topAnchor.constraint(equalTo: root.topAnchor, constant: Self.inset),
             searchField.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: Self.inset),
             searchField.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -Self.inset),
-            scrollView.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 6),
+            categoryBar.topAnchor.constraint(equalTo: searchField.bottomAnchor, constant: 4),
+            categoryBar.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: Self.inset),
+            categoryBar.trailingAnchor.constraint(lessThanOrEqualTo: root.trailingAnchor, constant: -Self.inset),
+            categoryBar.heightAnchor.constraint(equalToConstant: Self.categoryBarHeight),
+            scrollView.topAnchor.constraint(equalTo: categoryBar.bottomAnchor, constant: 2),
             scrollView.leadingAnchor.constraint(equalTo: root.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: root.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: root.bottomAnchor),
@@ -151,6 +183,98 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
         view.window?.makeFirstResponder(searchField)
     }
 
+    // MARK: - Category bar (ADR 0059)
+
+    private func makeCategoryButton(_ section: Int, symbol: String, name: String) -> NSButton {
+        let button = NSButton(title: "", target: nil, action: nil)
+        button.isBordered = false
+        button.tag = section
+        button.image = NSImage(systemSymbolName: symbol, accessibilityDescription: name)
+        button.imageScaling = .scaleProportionallyDown
+        button.setAccessibilityLabel(name)
+        button.toolTip = name
+        button.contentTintColor = .secondaryLabelColor
+        button.target = self
+        button.action = #selector(categoryButtonClicked(_:))
+        return button
+    }
+
+    private func buildCategoryBar() {
+        var buttons = categoryButtons
+        if let custom = customCategoryButton, sections.contains(where: { $0.title == String(localized: "Custom") }) {
+            custom.isHidden = false
+            buttons.append(custom)
+        }
+        // Скрытая вкладка «Пользовательские» не занимает места в стеке.
+        customCategoryButton?.isHidden = !sections.contains(where: { $0.title == String(localized: "Custom") })
+        categoryBar.detachedViews.forEach(categoryBar.removeView)
+        for button in buttons { categoryBar.addArrangedSubview(button) }
+    }
+
+    @objc private func categoryButtonClicked(_ sender: NSButton) {
+        scrollToCategory(sender.tag)
+    }
+
+    /// Прокрутка сетки к шапке категории: заголовок встаёт в верхний край.
+    func scrollToCategory(_ section: Int) {
+        guard sections.indices.contains(section), let layout = collectionView.collectionViewLayout else { return }
+        let attributes = layout.layoutAttributesForSupplementaryView(
+            ofKind: NSCollectionView.elementKindSectionHeader, at: IndexPath(item: 0, section: section))
+        guard let header = attributes?.frame else { return }
+        let clip = scrollView.contentView
+        var origin = clip.bounds.origin
+        origin.y = max(0, header.minY - 2)
+        clip.scroll(to: origin)
+        scrollView.reflectScrolledClipView(clip)
+        updateActiveCategory()
+    }
+
+    /// Активная вкладка следует за скроллом: верхний видимый раздел.
+    func updateActiveCategory() {
+        guard currentQuery.isEmpty, let layout = collectionView.collectionViewLayout else {
+            highlightCategory(nil)
+            return
+        }
+        let visibleTop = collectionView.visibleRect.minY
+        var active: Int?
+        for index in sections.indices {
+            guard let frame = layout.layoutAttributesForSupplementaryView(
+                ofKind: NSCollectionView.elementKindSectionHeader, at: IndexPath(item: 0, section: index))?.frame
+            else { continue }
+            if frame.minY <= visibleTop + 2 { active = index } else { break }
+        }
+        highlightCategory(active)
+    }
+
+    private func highlightCategory(_ section: Int?) {
+        guard section != activeCategory else { return }
+        activeCategory = section
+        let accent = NSColor.controlAccentColor
+        let secondary = NSColor.secondaryLabelColor
+        for button in categoryButtons + [customCategoryButton].compactMap({ $0 }) {
+            button.contentTintColor = button.tag == section ? accent : secondary
+        }
+    }
+
+    private func installScrollTracking() {
+        let clip = scrollView.contentView
+        clip.postsBoundsChangedNotifications = true
+        NotificationCenter.default.addObserver(self, selector: #selector(clipViewBoundsDidChange(_:)),
+                                               name: NSView.boundsDidChangeNotification, object: clip)
+    }
+
+    @objc private func clipViewBoundsDidChange(_ notification: Notification) {
+        updateActiveCategory()
+    }
+
+    /// Только для тестов: подписи вкладок в порядке следования.
+    var categoryTitlesForTesting: [String] {
+        categoryButtons.map(\.toolTip).filter { $0 != nil }.map { $0! }
+    }
+
+    /// Только для тестов: индекс активной вкладки.
+    var activeCategoryForTesting: Int? { activeCategory }
+
     // MARK: - Query and selection
 
     /// Shows the browse grid for an empty query, otherwise bounded search results.
@@ -166,6 +290,8 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
             sections = results.isEmpty ? [] : [Section(title: String(localized: "Search Results"), emoji: results.map(Entry.init))]
         }
         currentQuery = trimmed
+        categoryBar.isHidden = !trimmed.isEmpty
+        buildCategoryBar()
         customGeneration += 1
         customTask?.cancel()
         customTask = nil
@@ -204,6 +330,7 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
             sections.removeAll { $0.title == String(localized: "Custom") }
             if !customEntries.isEmpty { sections.append(Section(title: String(localized: "Custom"), emoji: customEntries)) }
             emptyLabel.isHidden = !sections.isEmpty
+            buildCategoryBar()
             collectionView.reloadData()
             if selection == nil { select(sections.firstIndex { !$0.emoji.isEmpty }.map { IndexPath(item: 0, section: $0) }, announce: false) }
         }
@@ -719,6 +846,22 @@ extension EmojiCategory {
         case .symbols: String(localized: "Symbols")
         case .flags: String(localized: "Flags")
         case .component: String(localized: "Components")
+        }
+    }
+
+    /// Символ вкладки категории в шапке пикера (ADR 0059): подписи не влезают
+    /// в ширину попапа, иконки с подсказкой — стандарт эмодзи-пикеров.
+    var symbolName: String {        switch self {
+        case .smileysEmotion: "face.smiling"
+        case .peopleBody: "person.2"
+        case .animalsNature: "pawprint"
+        case .foodDrink: "fork.knife"
+        case .activities: "sportscourt"
+        case .travelPlaces: "airplane"
+        case .objects: "lightbulb"
+        case .symbols: "star"
+        case .flags: "flag"
+        case .component: "circle.dashed"
         }
     }
 }

@@ -240,3 +240,64 @@ struct ReactionPickerTests {
                 sendState: nil, actions: .none, permalink: nil)))
     }
 }
+
+/// Вкладки категорий в шапке пикера (ADR 0059): иконки разделов, клик —
+/// прокрутка к разделу, активная вкладка следует за скроллом.
+@MainActor
+@Suite("Reaction picker categories")
+struct ReactionPickerCategoryTests {
+    @Test func barMirrorsBrowseSectionsAndScrolls() throws {
+        let picker = ReactionPickerViewController()
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: ReactionPickerViewController.preferredSize),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentViewController = picker
+        window.contentView?.layoutSubtreeIfNeeded()
+
+        // Вкладки: «Часто используемые» + все категории каталога; «Пользовательские»
+        // не показана, пока серверная страница не загрузилась.
+        let expected = [String(localized: "Frequently Used")]
+            + EmojiCategory.allCases.filter(\.isShownInPicker).map(\.displayName)
+        #expect(picker.categoryTitlesForTesting == expected)
+        #expect(picker.categoryButtons.allSatisfy { $0.toolTip != nil && $0.image != nil })
+        #expect(picker.customCategoryButton?.isHidden == true)
+        #expect(picker.categoryBar.isHidden == false)
+
+        // Клик по вкладке прокручивает сетку к шапке раздела и подсвечивает вкладку.
+        picker.scrollToCategory(2)
+        window.contentView?.layoutSubtreeIfNeeded()
+        #expect(picker.activeCategoryForTesting == 2, "после прокрутки активна вкладка целевой категории")
+        #expect(picker.categoryButtons[2].contentTintColor == NSColor.controlAccentColor)
+        #expect(picker.categoryButtons[0].contentTintColor == NSColor.secondaryLabelColor)
+        window.orderOut(nil)
+    }
+
+    @Test func searchHidesTheBarAndCustomTabAppearsAfterPageLoads() async throws {
+        let picker = ReactionPickerViewController()
+        picker.customPage = { _, _ in [CustomEmoji(id: "c1", name: "gifka")] }
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: ReactionPickerViewController.preferredSize),
+                              styleMask: [.titled], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentViewController = picker
+        window.contentView?.layoutSubtreeIfNeeded()
+
+        // Поиск прячет вкладки; очистка возвращает их.
+        picker.apply(query: "smile")
+        #expect(picker.categoryBar.isHidden == true)
+        picker.apply(query: "")
+        #expect(picker.categoryBar.isHidden == false)
+
+        // Серверная страница пользовательских эмодзи добавляет вкладку.
+        picker.loadCustomPage()
+        let deadline = Date().addingTimeInterval(2)
+        while Date() < deadline, picker.customCategoryButton?.isHidden != false {
+            try await Task.sleep(for: .milliseconds(20))
+            window.contentView?.layoutSubtreeIfNeeded()
+        }
+        #expect(picker.customCategoryButton?.isHidden == false, "вкладка «Пользовательские» появилась")
+        #expect(picker.customCategoryButton?.tag == picker.categoryButtons.count)
+        picker.scrollToCategory(picker.customCategoryButton?.tag ?? 0)
+        #expect(picker.activeCategoryForTesting == picker.categoryButtons.count)
+        window.orderOut(nil)
+    }
+}
