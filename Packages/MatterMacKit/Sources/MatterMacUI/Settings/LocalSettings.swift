@@ -81,6 +81,11 @@ public final class LocalSettings {
         /// JSON `Data` `[categoryID: emojiName]` — иконки пользовательских групп
         /// (ADR 0043); не больше 100 записей, строки до 64 байт.
         case sidebarGroupIcons = "MatterMac.sidebarGroupIcons"
+        /// Ширина колонки чатов в pt (ADR 0060): сохраняется между запусками,
+        /// вне допустимого диапазона — сбрасывается к умолчанию.
+        case sidebarWidth = "MatterMac.sidebarWidth"
+        /// Сайдбар свёрнут до аватарок (ADR 0060).
+        case sidebarCollapsed = "MatterMac.sidebarCollapsed"
     }
 
     /// Window theme (Settings › Appearance). Applies live to every window; invalid
@@ -120,6 +125,18 @@ public final class LocalSettings {
     /// последнего сообщения); мелкий режим — прежняя компактная строка.
     public var largeChatList = true {
         didSet { save(.largeChatList, largeChatList) }
+    }
+    /// Ширина всей колонки сайдбара в pt (ADR 0060): рельсы плюс чат-колонка.
+    /// Значение вне `SidebarMetrics.storageRange` при загрузке отбрасывается.
+    public var sidebarWidth: Double = 344 {
+        didSet {
+            guard oldValue != sidebarWidth, isLoaded else { return }
+            storage?.set(sidebarWidth, forKey: Key.sidebarWidth.rawValue)
+        }
+    }
+    /// Сайдбар свёрнут до колонки аватарок (ADR 0060).
+    public var sidebarCollapsed = false {
+        didSet { save(.sidebarCollapsed, sidebarCollapsed) }
     }
     public var appearance: Appearance = .system {
         didSet {
@@ -212,6 +229,8 @@ public final class LocalSettings {
             theme = read.data(.theme).flatMap(AppTheme.init(storageData:)) ?? theme
             selectedSidebarFolder = read.folder(.selectedSidebarFolder) ?? selectedSidebarFolder
             sidebarGroupIcons = read.iconMap(.sidebarGroupIcons)
+            sidebarWidth = read.double(.sidebarWidth, in: SidebarMetrics.storageRange) ?? sidebarWidth
+            sidebarCollapsed = read.bool(.sidebarCollapsed) ?? sidebarCollapsed
         }
         // Сеем схему до первой отрисовки: палитра читает её в провайдерах
         // динамических цветов; дальше значение держат биндинги панелей.
@@ -256,6 +275,14 @@ public final class LocalSettings {
         func string(_ key: Key) -> String? {
             guard let text = storage.object(forKey: key.rawValue) as? String, text.utf8.count <= 64 else { return nil }
             return text
+        }
+
+        /// Число из интервала `range`: сырое значение вне диапазона — `nil`,
+        /// загружается умолчание (защита от мусора в хранилище).
+        func double(_ key: Key, in range: ClosedRange<Double>) -> Double? {
+            guard let number = storage.object(forKey: key.rawValue) as? Double,
+                  range.contains(number) else { return nil }
+            return number
         }
 
         func data(_ key: Key) -> Data? {

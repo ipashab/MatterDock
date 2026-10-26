@@ -81,6 +81,9 @@ struct LocalSettingsPersistenceTests {
         // ADR 0043: выбранная папка рельсы и иконки групп тоже сохраняются.
         first.selectedSidebarFolder = "unread"
         first.sidebarGroupIcons = ["custom_abc": "tada"]
+        // ADR 0060: ширина и свёрнутость сайдбара — настройки «на этом Mac».
+        first.sidebarWidth = 420
+        first.sidebarCollapsed = true
         #expect(storage.values["MatterMac.notificationsEnabled"] as? Bool == false)
         #expect(storage.values["MatterMac.textSize"] as? String == "extraLarge")
         #expect(storage.values["MatterMac.bubbleTimeline"] as? Bool == true)
@@ -104,6 +107,7 @@ struct LocalSettingsPersistenceTests {
         #expect(restored.theme == .preset(.dusk))
         #expect(restored.selectedSidebarFolder == "unread")
         #expect(restored.sidebarGroupIcons == ["custom_abc": "tada"])
+        #expect(restored.sidebarWidth == 420 && restored.sidebarCollapsed)
         // The saved appearance is applied at launch, not only on change.
         #expect(NSApplication.shared.appearance?.name == .darkAqua)
         #expect(environment(storage).sendBehavior == .commandReturnSends)
@@ -126,6 +130,9 @@ struct LocalSettingsPersistenceTests {
             // ADR 0043: нестроковая папка и не-JSON карта — дефолт «все» и пустая карта.
             "MatterMac.selectedSidebarFolder": 123,
             "MatterMac.sidebarGroupIcons": "not-json",
+            // ADR 0060: ширина вне диапазона и не-Bool свёрнутость — дефолт.
+            "MatterMac.sidebarWidth": 5000.0,
+            "MatterMac.sidebarCollapsed": "YES",
         ])
         let settings = LocalSettings(storage: storage)
         #expect(settings.notificationsEnabled && settings.showMessagePreview)
@@ -134,6 +141,8 @@ struct LocalSettingsPersistenceTests {
         #expect(settings.sendBehavior == .returnSends && settings.textSize == .standard && settings.appearance == .system)
         #expect(settings.theme == .system)
         #expect(settings.selectedSidebarFolder == "all" && settings.sidebarGroupIcons.isEmpty)
+        // ADR 0060: свёрнутый по умолчанию выключен, ширина — дефолт колонки.
+        #expect(!settings.sidebarCollapsed && settings.sidebarWidth == 344)
         // Строка вместо Bool — только настоящий Bool в расчёт (дефолт — включено, ADR 0042).
         #expect(settings.bubbleTimeline)
         // Неизвестная схема не сохраняется под видом «выбранной» — дефолт `classic` (ADR 0056).

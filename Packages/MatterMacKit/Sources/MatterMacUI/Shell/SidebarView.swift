@@ -10,42 +10,47 @@ struct SidebarView: View {
     @State private var columnWidth: CGFloat = 280
 
     var body: some View {
+        let settings = app.environment.settings
         HStack(spacing: 0) {
-            if WorkspaceRail.isShown(app: app, sidebar: session.sidebar) {
-                WorkspaceRail(app: app, session: session)
-            }
-            FolderRail(session: session)
-            VStack(spacing: 0) {
-                chatColumn
-                    .overlay(alignment: .bottom) {
-                        VStack(spacing: 8) {
-                            if session.connection != .connected {
-                                ConnectionFooter(session: session)
-                                    .glassCapsule()
-                            }
-                            AccountBar(app: app, session: session)
-                        }
-                        .padding(.horizontal, 10)
-                        .padding(.bottom, 8)
-                    }
-            }
-            // The column may be narrower than the list's ideal width; never push the
-            // rail out of the column.
-            .frame(minWidth: 0, maxWidth: .infinity)
-            .overlay {
-                // Рельса папок видна всегда — разделитель колонки тоже.
-                GeometryReader { geometry in
-                    Path { path in
-                        path.move(to: CGPoint(x: 0.5, y: geometry.size.height))
-                        path.addLine(to: CGPoint(x: 0.5, y: 16))
-                        path.addQuadCurve(to: CGPoint(x: 16, y: 0.5),
-                                          control: CGPoint(x: 0.5, y: 0.5))
-                        path.addLine(to: CGPoint(x: geometry.size.width, y: 0.5))
-                    }
-                    .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+            if settings.sidebarCollapsed {
+                compactColumn
+            } else {
+                if WorkspaceRail.isShown(app: app, sidebar: session.sidebar) {
+                    WorkspaceRail(app: app, session: session)
                 }
-                .allowsHitTesting(false)
-                .accessibilityHidden(true)
+                FolderRail(session: session)
+                VStack(spacing: 0) {
+                    chatColumn
+                        .overlay(alignment: .bottom) {
+                            VStack(spacing: 8) {
+                                if session.connection != .connected {
+                                    ConnectionFooter(session: session)
+                                        .glassCapsule()
+                                }
+                                AccountBar(app: app, session: session)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.bottom, 8)
+                        }
+                }
+                // The column may be narrower than the list's ideal width; never push the
+                // rail out of the column.
+                .frame(minWidth: 0, maxWidth: .infinity)
+                .overlay {
+                    // Рельса папок видна всегда — разделитель колонки тоже.
+                    GeometryReader { geometry in
+                        Path { path in
+                            path.move(to: CGPoint(x: 0.5, y: geometry.size.height))
+                            path.addLine(to: CGPoint(x: 0.5, y: 16))
+                            path.addQuadCurve(to: CGPoint(x: 16, y: 0.5),
+                                              control: CGPoint(x: 0.5, y: 0.5))
+                            path.addLine(to: CGPoint(x: geometry.size.width, y: 0.5))
+                        }
+                        .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
+                    }
+                    .allowsHitTesting(false)
+                    .accessibilityHidden(true)
+                }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -55,10 +60,56 @@ struct SidebarView: View {
                 .ignoresSafeArea()
                 .allowsHitTesting(false)
         }
+        .overlay(alignment: .trailing) {
+            // Ручка растяжения (ADR 0060): вся высота колонки, у правого края.
+            SidebarResizeHandle(settings: settings,
+                                workspaceShown: WorkspaceRail.isShown(app: app, sidebar: session.sidebar))
+        }
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { columnWidth = $0 }
-        .modifier(SidebarTitleToolbar(app: app, session: session, columnWidth: columnWidth))
+        .modifier(SidebarTitleToolbar(app: app, session: session, columnWidth: columnWidth,
+                                      collapsed: settings.sidebarCollapsed))
         .sheet(item: $session.directorySheet) { sheet in
             DirectorySheetView(session: session, sheet: sheet)
+        }
+    }
+
+    /// Свёрнутая колонка (ADR 0060): вертикальная лента аватарок каналов,
+    /// поиск — одной иконкой; папки и рельсы скрыты, выбор папки не влияет
+    /// на ленту (показывает все каналы).
+    private var compactColumn: some View {
+        VStack(spacing: 0) {
+            List(selection: Binding(
+                get: { session.selectedChannel },
+                set: { if let id = $0 { session.select(channel: id) } })) {
+                Button { session.isQuickSwitcherVisible = true } label: {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 28)
+                }
+                .buttonStyle(.plain)
+                .help("Search (⌘K)")
+                .accessibilityLabel("Search")
+                .listRowInsets(EdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10))
+                .listRowBackground(Color.clear)
+                ForEach(compactRows) { row in
+                    SidebarAvatarRow(row: row, session: session)
+                        .tag(row.channelID)
+                        .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10))
+                        .listRowBackground(Color.clear)
+                }
+            }
+            .listStyle(.plain)
+            .scrollIndicators(.hidden)
+            AccountBar(app: app, session: session, compact: true)
+                .padding(.bottom, 8)
+        }
+    }
+
+    private var compactRows: [SidebarChannelRow] {
+        (session.sidebar?.chatSections(for: .all) ?? []).flatMap {
+            $0.visibleRows(selected: session.selectedChannel)
         }
     }
 
@@ -226,17 +277,25 @@ private struct SidebarTitleToolbar: ViewModifier {
     let app: AppModel
     let session: SessionViewModel
     let columnWidth: CGFloat
+    /// Свёрнутый сайдбар (ADR 0060): места нет, шапка не ставится совсем —
+    /// остаются только кнопки-«светофоры» окна.
+    var collapsed = false
 
+    @ViewBuilder
     func body(content: Content) -> some View {
-        if #available(macOS 26.0, *) {
-            content.toolbar {
-                ToolbarItem(placement: .automatic) { header }
-                    .sharedBackgroundVisibility(.hidden)
+        if !collapsed {
+            if #available(macOS 26.0, *) {
+                content.toolbar {
+                    ToolbarItem(placement: .automatic) { header }
+                        .sharedBackgroundVisibility(.hidden)
+                }
+            } else {
+                content.toolbar {
+                    ToolbarItem(placement: .automatic) { header }
+                }
             }
         } else {
-            content.toolbar {
-                ToolbarItem(placement: .automatic) { header }
-            }
+            content
         }
     }
 
@@ -424,43 +483,10 @@ struct SidebarRow: View {
         .accessibilityAction { session.select(channel: row.channelID) }
     }
 
-    /// Аватар 38: у личных — фото с точкой статуса, у каналов/групп —
-    /// тонированная плашка с глифом (рендер: avatar-38, радиус 27%).
-    @ViewBuilder private var largeAvatar: some View {
-        switch row.type {
-        case .direct:
-            if let partner = row.partnerID {
-                ProfileAvatar(session: session, userID: partner, revision: row.partnerAvatarRevision,
-                              name: row.displayName, size: 38, status: row.partnerStatus ?? .offline)
-            } else {
-                statusPlaceholderCircle
-            }
-        case .group:
-            glyphAvatar(systemImage: "person.2")
-        case .private:
-            glyphAvatar(systemImage: row.isArchived ? "archivebox" : "lock")
-        default:
-            glyphAvatar(systemImage: row.isArchived ? "archivebox" : "number")
-        }
-    }
-
-    @ViewBuilder private var statusPlaceholderCircle: some View {
-        ZStack {
-            Circle().fill(.quaternary)
-            Circle().fill(statusColor).frame(width: 10, height: 10)
-        }
-        .frame(width: 38, height: 38)
-    }
-
-    private func glyphAvatar(systemImage: String) -> some View {
-        ZStack {
-            RoundedRectangle(cornerRadius: 38 * 0.27, style: .continuous)
-                .fill(Color(nsColor: TimelinePalette.avatarTint(for: row.channelID.rawValue)).opacity(0.28))
-            Image(systemName: systemImage)
-                .font(.system(size: 15, weight: .medium))
-                .foregroundStyle(Color(nsColor: TimelinePalette.avatarTint(for: row.channelID.rawValue)))
-        }
-        .frame(width: 38, height: 38)
+    /// Аватар 38 (рендер: avatar-38, радиус 27%) — общий со свёрнутым
+    /// режимом `SidebarChannelAvatar`.
+    private var largeAvatar: some View {
+        SidebarChannelAvatar(row: row, session: session, size: 38)
     }
 
     private var previewText: some View {
@@ -570,6 +596,209 @@ struct SidebarRow: View {
 
 /// Leading rail: signed-in servers (circles) above the active server's teams
 /// (rounded squares), with unread and mention indicators. ⌘1…⌘9 select teams.
+/// Аватар строки списка чатов: у личных — фото с точкой статуса, у каналов и
+/// групп — тонированная плашка с глифом (рендер OpenDesign: радиус 27%).
+/// Один и тот же для крупной строки и свёрнутого сайдбара (ADR 0060).
+struct SidebarChannelAvatar: View {
+    let row: SidebarChannelRow
+    let session: SessionViewModel
+    let size: Double
+
+    var body: some View {
+        switch row.type {
+        case .direct:
+            if let partner = row.partnerID {
+                ProfileAvatar(session: session, userID: partner, revision: row.partnerAvatarRevision,
+                              name: row.displayName, size: size, status: row.partnerStatus ?? .offline)
+            } else {
+                ZStack {
+                    Circle().fill(.quaternary)
+                    Circle().fill(Self.presenceColor(row.partnerStatus)).frame(width: size / 3.8, height: size / 3.8)
+                }
+                .frame(width: size, height: size)
+            }
+        case .group:
+            glyph("person.2")
+        case .private:
+            glyph(row.isArchived ? "archivebox" : "lock")
+        default:
+            glyph(row.isArchived ? "archivebox" : "number")
+        }
+    }
+
+    private func glyph(_ systemImage: String) -> some View {
+        ZStack {
+            RoundedRectangle(cornerRadius: size * 0.27, style: .continuous)
+                .fill(Color(nsColor: TimelinePalette.avatarTint(for: row.channelID.rawValue)).opacity(0.28))
+            Image(systemName: systemImage)
+                .font(.system(size: size * 0.4, weight: .medium))
+                .foregroundStyle(Color(nsColor: TimelinePalette.avatarTint(for: row.channelID.rawValue)))
+        }
+        .frame(width: size, height: size)
+    }
+
+    /// Цвет точки присутствия — общий для строк списка и свёрнутого режима.
+    static func presenceColor(_ status: PresenceStatus?) -> Color {
+        switch status {
+        case .online: .green
+        case .away: .yellow
+        case .doNotDisturb, .outOfOffice: .red
+        default: .secondary.opacity(0.5)
+        }
+    }
+}
+
+/// Строка свёрнутого сайдбара (ADR 0060): аватар канала и индикатор внимания —
+/// бейдж числа упоминаний или точка непрочитанного; имя вынесено в подсказку
+/// и доступно VoiceOver.
+private struct SidebarAvatarRow: View {
+    let row: SidebarChannelRow
+    let session: SessionViewModel
+
+    var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            SidebarChannelAvatar(row: row, session: session, size: 36)
+            indicator
+        }
+        .frame(width: 44, height: 44)
+        .opacity(row.isMuted && row.mentionCount == 0 ? 0.55 : 1)
+        .help(row.partnerUsername.map { "@" + $0 } ?? row.displayName)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityText)
+        .accessibilityAddTraits(session.selectedChannel == row.channelID ? .isSelected : [])
+    }
+
+    @ViewBuilder private var indicator: some View {
+        if row.mentionCount > 0 {
+            Text(row.mentionCount > 99 ? "99+" : "\(row.mentionCount)")
+                .font(.system(size: 11, weight: .semibold))
+                .padding(.horizontal, 5)
+                .frame(minHeight: 16)
+                .background(Capsule().fill(.tint))
+                .foregroundStyle(.white)
+                .offset(x: 4, y: 4)
+        } else if row.isUnread {
+            Circle().fill(.tint).frame(width: 9, height: 9)
+                .offset(x: 4, y: 4)
+        }
+    }
+
+    private var accessibilityText: String {
+        var parts = [row.displayName]
+        if row.mentionCount > 0 { parts.append(String(localized: "\(row.mentionCount) mentions")) }
+        if row.isUnread { parts.append(String(localized: "unread")) }
+        if row.isArchived { parts.append(String(localized: "archived")) }
+        if row.isMuted { parts.append(String(localized: "muted")) }
+        return parts.joined(separator: ", ")
+    }
+}
+
+/// Геометрия сайдбара (ADR 0060): перетаскиваемая ширина и сворачивание
+/// колонки чатов до одних аватарок.
+enum SidebarMetrics {
+    static let workspaceRailWidth: Double = 52
+    static let folderRailWidth: Double = 64
+    /// Ширина свёрнутой колонки чатов.
+    static let collapsedWidth: Double = 64
+    /// Границы чат-колонки в раскрытом сайдбаре (рельсы не в счёт).
+    static let expandedChatMin: Double = 180
+    static let expandedChatMax: Double = 520
+    /// Ниже этой чат-колонки ручка сворачивает сайдбар.
+    static let collapseChatBelow: Double = 140
+    /// Разворот из свёрнутого состояния: настолько пикселей тяги хватит.
+    static let expandDragMinimum: Double = 16
+    /// Диапазон сохранённой ширины всей колонки (валидация при загрузке).
+    static var storageRange: ClosedRange<Double> { 100...720 }
+
+    /// Суммарная ширина рельс раскрытого сайдбара.
+    static func railWidth(workspaceShown: Bool) -> Double {
+        (workspaceShown ? workspaceRailWidth : 0) + folderRailWidth
+    }
+
+    /// Итоговая ширина колонки для NavigationSplitView: сохранённое значение
+    /// каждый раз поджимается к текущим рельсам.
+    static func columnWidth(collapsed: Bool, stored: Double, workspaceShown: Bool) -> Double {
+        guard !collapsed else { return collapsedWidth }
+        let rails = railWidth(workspaceShown: workspaceShown)
+        return min(max(stored, rails + expandedChatMin), rails + expandedChatMax)
+    }
+}
+
+/// Логика перетаскивания ручки (ADR 0060), вынесена в чистый тип: один
+/// источник для жеста и тестов. Пишет прямо в `LocalSettings`.
+@MainActor
+struct SidebarWidthController {
+    private enum Drag {
+        case none
+        case expandedFrom(Double)
+        case collapsedFrom
+    }
+
+    let settings: LocalSettings
+    let workspaceShown: Bool
+    private var drag: Drag = .none
+
+    /// Горизонтальная тяга: смещение жеста от старта в pt (плюс — вправо).
+    mutating func dragChanged(_ translation: Double) {
+        let rails = SidebarMetrics.railWidth(workspaceShown: workspaceShown)
+        switch drag {
+        case .none:
+            // Первый кадр жеста фиксирует точку старта — и сразу применяется.
+            drag = settings.sidebarCollapsed ? .collapsedFrom
+                : .expandedFrom(SidebarMetrics.columnWidth(collapsed: false, stored: settings.sidebarWidth,
+                                                           workspaceShown: workspaceShown))
+            dragChanged(translation)
+        case .collapsedFrom:
+            // Направления асимметричны: разворот — уже небольшим движением
+            // вправо, чтобы не тянуть через весь порог сворачивания.
+            if translation >= SidebarMetrics.expandDragMinimum {
+                settings.sidebarCollapsed = false
+                settings.sidebarWidth = rails + SidebarMetrics.expandedChatMin
+            }
+        case .expandedFrom(let origin):
+            let proposal = origin + translation
+            if proposal <= rails + SidebarMetrics.collapseChatBelow {
+                settings.sidebarCollapsed = true
+            } else {
+                settings.sidebarWidth = min(max(proposal, rails + SidebarMetrics.expandedChatMin),
+                                            rails + SidebarMetrics.expandedChatMax)
+            }
+        }
+    }
+
+    /// Жест окончен.
+    mutating func dragEnded() { drag = .none }
+
+    /// Двойной клик по ручке — переключение свёрнуто/раскрыто.
+    mutating func doubleClicked() { settings.sidebarCollapsed.toggle() }
+}
+
+/// Ручка растяжения сайдбара (ADR 0060): тянется в границах `SidebarMetrics`;
+/// ниже порога сворачивает колонку в аватарки, из свёрнутого — небольшой тягой
+/// вправо разворачивает обратно. Двойной клик — переключение той же пары.
+private struct SidebarResizeHandle: View {
+    @State private var controller: SidebarWidthController
+
+    init(settings: LocalSettings, workspaceShown: Bool) {
+        // Контроллер замыкается на тот же экземпляр настроек и держит
+        // состояние жеста между кадрами перетаскивания.
+        _controller = State(initialValue: SidebarWidthController(settings: settings, workspaceShown: workspaceShown))
+    }
+
+    var body: some View {
+        Color.clear
+            .frame(width: 7)
+            .contentShape(Rectangle())
+            .onHover { hovering in
+                if hovering { NSCursor.resizeLeftRight.set() } else { NSCursor.arrow.set() }
+            }
+            .onTapGesture(count: 2) { controller.doubleClicked() }
+            .gesture(DragGesture(minimumDistance: 2)
+                .onChanged { controller.dragChanged(Double($0.translation.width)) }
+                .onEnded { _ in controller.dragEnded() })
+    }
+}
+
 struct WorkspaceRail: View {
     let app: AppModel
     let session: SessionViewModel
@@ -750,6 +979,9 @@ struct ServerRailButton: View {
 struct AccountBar: View {
     let app: AppModel
     let session: SessionViewModel
+    /// Свёрнутый сайдбар (ADR 0060): только аватар и меню-шестерёнка,
+    /// без имени и статуса.
+    var compact = false
     @State private var isProfileVisible = false
     @State private var isCustomStatusVisible = false
 
@@ -767,17 +999,19 @@ struct AccountBar: View {
             .popover(isPresented: $isProfileVisible) {
                 UserProfileCard(session: session, lookup: .id(user.id)) { isProfileVisible = false }
             }
-            VStack(alignment: .leading, spacing: 0) {
-                Text(verbatim: "@" + user.username).font(.callout.weight(.medium)).lineLimit(1)
-                if let custom = session.sidebar?.myCustomStatus, custom.isVisible(at: .now) {
-                    Text(verbatim: [custom.emoji.isEmpty ? "" : EmojiText.display(custom.emoji), custom.text]
-                        .filter { !$0.isEmpty }.joined(separator: " "))
-                        .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                } else if let status {
-                    Text(status.label).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            if !compact {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(verbatim: "@" + user.username).font(.callout.weight(.medium)).lineLimit(1)
+                    if let custom = session.sidebar?.myCustomStatus, custom.isVisible(at: .now) {
+                        Text(verbatim: [custom.emoji.isEmpty ? "" : EmojiText.display(custom.emoji), custom.text]
+                            .filter { !$0.isEmpty }.joined(separator: " "))
+                            .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    } else if let status {
+                        Text(status.label).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    }
                 }
+                Spacer(minLength: 4)
             }
-            Spacer(minLength: 4)
             Menu {
                 Section("Status") {
                     ForEach(PresenceStatus.selectable, id: \.self) { option in
@@ -812,7 +1046,7 @@ struct AccountBar: View {
                 CustomStatusView(session: session, current: session.sidebar?.myCustomStatus)
             }
         }
-        .padding(.horizontal, 10)
+        .padding(.horizontal, compact ? 0 : 10)
         .padding(.vertical, 8)
         .glassCapsule()
     }

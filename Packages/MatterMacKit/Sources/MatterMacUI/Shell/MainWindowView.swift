@@ -172,9 +172,14 @@ struct MainWindowView: View {
     var body: some View {
         NavigationSplitView {
             SidebarView(app: app, session: session)
-                .navigationSplitViewColumnWidth(
-                    min: WorkspaceRail.isShown(app: app, sidebar: session.sidebar) ? 324 : 264,
-                    ideal: 344, max: 404)
+                // Фиксированная ширина, управляемая своей ручкой внутри сайдбара
+                // (ADR 0060): родной разделитель NavigationSplitView не тянется,
+                // зато положение живёт в LocalSettings и колонку можно сложить
+                // до одних аватарок.
+                .navigationSplitViewColumnWidth(SidebarMetrics.columnWidth(
+                    collapsed: app.environment.settings.sidebarCollapsed,
+                    stored: app.environment.settings.sidebarWidth,
+                    workspaceShown: WorkspaceRail.isShown(app: app, sidebar: session.sidebar)))
         } detail: {
             GeometryReader { geometry in
                 ZStack(alignment: .top) {
