@@ -25,6 +25,13 @@ public struct MatterMacCommands: Commands {
                 .keyboardShortcut("/", modifiers: .command)
             Button("About and Compatibility") { environment.appModel?.isCompatibilityVisible = true }
         }
+        // ADR 0060: Default "Toggle Sidebar" of NavigationSplitView hides the column entirely —
+        // an empty window without avatars. We replace it with our toggle
+        // "expanded ↔ column of avatars"; full hiding is not possible via the menu.
+        CommandGroup(replacing: .sidebar) {
+            Button("Toggle Sidebar") { environment.settings.sidebarCollapsed.toggle() }
+                .disabled(environment.appModel?.activeSession == nil)
+        }
         CommandMenu("Format") {
             // Sent to the focused composer; shortcuts are handled there while typing.
             formatItem("Bold", #selector(ComposerTextView.formatBold(_:)), "b", .command)

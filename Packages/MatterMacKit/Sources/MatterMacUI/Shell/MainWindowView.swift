@@ -5,6 +5,12 @@ import MatterMacCore
 struct MainWindowView: View {
     let app: AppModel
     @Bindable var session: SessionViewModel
+    /// Родная видимость колонки (ADR 0060). macOS показывает в тулбаре тумблер
+    /// сайдбара: без перехвата он прячет колонку ЦЕЛИКОМ — пользователь видит
+    /// «свёрнутое» пустое окно без аватарок. Поэтому запрос `.detailOnly`
+    /// переводится в нашу пару «раскрыт ↔ колонка аватарок», а панель
+    /// возвращается на место (`sidebarCollapsed` — единственный источник правды).
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -170,7 +176,7 @@ struct MainWindowView: View {
     }
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             SidebarView(app: app, session: session)
                 // Фиксированная ширина, управляемая своей ручкой внутри сайдбара
                 // (ADR 0060): родной разделитель NavigationSplitView не тянется,
@@ -199,6 +205,15 @@ struct MainWindowView: View {
         .toolbarBackground(.ultraThinMaterial, for: .windowToolbar)
         .navigationTitle(session.isThreadsViewVisible ? String(localized: "Threads") : ChannelHeaderText.title(session.header))
         .navigationSubtitle(session.isThreadsViewVisible ? "" : ChannelHeaderText.subtitle(session.header, parse: app.environment.markupParse))
+        // Перехват родного тумблера сайдбара (ADR 0060): запрос «скрыть
+        // колонку» превращается в переключение нашей пары состояний и возврат
+        // панели на место — тумблер складывает сайдбар до аватарок, а не
+        // прячет его целиком.
+        .onChange(of: columnVisibility) { _, requested in
+            guard requested == .detailOnly else { return }
+            app.environment.settings.sidebarCollapsed.toggle()
+            columnVisibility = .all
+        }
         .toolbar {
             // macOS 26 shows these beside the title (ConversationTitleToolbar), so the
             // trailing controls keep their place when switching conversations.
