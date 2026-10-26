@@ -76,31 +76,36 @@ struct SidebarView: View {
     /// Свёрнутая колонка (ADR 0060): вертикальная лента аватарок каналов,
     /// поиск — одной иконкой; папки и рельсы скрыты, выбор папки не влияет
     /// на ленту (показывает все каналы).
+    /// Свёрнутая колонка (ADR 0060): вертикальная лента аватарок каналов.
+    /// Без `List` (репорт 2026-10-26: строки списка режут контент по границам —
+    /// аватары и бейджи обрезались) — обычный скролл, ширина строки-аватара
+    /// с полями ровно `collapsedWidth`, ничего не выходит за края.
     private var compactColumn: some View {
         VStack(spacing: 0) {
-            List(selection: Binding(
-                get: { session.selectedChannel },
-                set: { if let id = $0 { session.select(channel: id) } })) {
-                Button { session.isQuickSwitcherVisible = true } label: {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 28)
+            ScrollView(.vertical) {
+                VStack(spacing: 4) {
+                    Button { session.isQuickSwitcherVisible = true } label: {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .frame(width: SidebarMetrics.compactRowSize,
+                                   height: SidebarMetrics.compactRowSize)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Search (⌘K)")
+                    .accessibilityLabel("Search")
+                    ForEach(compactRows) { row in
+                        Button { session.select(channel: row.channelID) } label: {
+                            SidebarAvatarRow(row: row, session: session,
+                                             isSelected: session.selectedChannel == row.channelID)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                .buttonStyle(.plain)
-                .help("Search (⌘K)")
-                .accessibilityLabel("Search")
-                .listRowInsets(EdgeInsets(top: 6, leading: 10, bottom: 6, trailing: 10))
-                .listRowBackground(Color.clear)
-                ForEach(compactRows) { row in
-                    SidebarAvatarRow(row: row, session: session)
-                        .tag(row.channelID)
-                        .listRowInsets(EdgeInsets(top: 2, leading: 10, bottom: 2, trailing: 10))
-                        .listRowBackground(Color.clear)
-                }
+                .padding(.top, 6)
+                .padding(.bottom, 10)
+                .frame(maxWidth: .infinity)
             }
-            .listStyle(.plain)
             .scrollIndicators(.hidden)
             AccountBar(app: app, session: session, compact: true)
                 .padding(.bottom, 8)
@@ -649,23 +654,32 @@ struct SidebarChannelAvatar: View {
 }
 
 /// Строка свёрнутого сайдбара (ADR 0060): аватар канала и индикатор внимания —
-/// бейдж числа упоминаний или точка непрочитанного; имя вынесено в подсказку
-/// и доступно VoiceOver.
+/// бейдж числа упоминаний или точка непрочитанного. Всё габаритно внутри
+/// строки `compactRowSize` (репорт 2026-10-26: вылеты за фрейм обрезались);
+/// имя вынесено в подсказку и доступно VoiceOver.
 private struct SidebarAvatarRow: View {
     let row: SidebarChannelRow
     let session: SessionViewModel
+    var isSelected = false
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            SidebarChannelAvatar(row: row, session: session, size: 36)
-            indicator
+            SidebarChannelAvatar(row: row, session: session, size: SidebarMetrics.compactAvatarSize)
+                .background {
+                    if isSelected {
+                        Circle().fill(Color.primary.opacity(0.09))
+                            .frame(width: SidebarMetrics.compactRowSize - 2,
+                                   height: SidebarMetrics.compactRowSize - 2)
+                    }
+                }
+            indicator.padding(3)
         }
-        .frame(width: 44, height: 44)
+        .frame(width: SidebarMetrics.compactRowSize, height: SidebarMetrics.compactRowSize)
         .opacity(row.isMuted && row.mentionCount == 0 ? 0.55 : 1)
         .help(row.partnerUsername.map { "@" + $0 } ?? row.displayName)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityText)
-        .accessibilityAddTraits(session.selectedChannel == row.channelID ? .isSelected : [])
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     @ViewBuilder private var indicator: some View {
@@ -676,10 +690,8 @@ private struct SidebarAvatarRow: View {
                 .frame(minHeight: 16)
                 .background(Capsule().fill(.tint))
                 .foregroundStyle(.white)
-                .offset(x: 4, y: 4)
         } else if row.isUnread {
             Circle().fill(.tint).frame(width: 9, height: 9)
-                .offset(x: 4, y: 4)
         }
     }
 
@@ -698,8 +710,13 @@ private struct SidebarAvatarRow: View {
 enum SidebarMetrics {
     static let workspaceRailWidth: Double = 52
     static let folderRailWidth: Double = 64
-    /// Ширина свёрнутой колонки чатов.
-    static let collapsedWidth: Double = 64
+    /// Ширина свёрнутой колонки чатов: строка-аватар и поля слева/справа
+    /// (репорт 2026-10-26: ширина — ровно «аватар + отступ, как отступ слева»).
+    static var collapsedWidth: Double { compactRowSize + compactRowInset * 2 }
+    /// Геометрия строки-аватара в свёрнутой колонке.
+    static let compactRowSize: Double = 44
+    static let compactRowInset: Double = 10
+    static let compactAvatarSize: Double = 36
     /// Границы чат-колонки в раскрытом сайдбаре (рельсы не в счёт).
     static let expandedChatMin: Double = 180
     static let expandedChatMax: Double = 520

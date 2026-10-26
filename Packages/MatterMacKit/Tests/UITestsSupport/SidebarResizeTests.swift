@@ -29,6 +29,17 @@ struct SidebarResizeTests {
         #expect(SidebarMetrics.railWidth(workspaceShown: false) == SidebarMetrics.folderRailWidth)
     }
 
+    @Test func compactColumnFitsItsOwnWidth() {
+        // Репорт 2026-10-26: колонка аватарок — ровно «аватар-строка + отступ
+        // слева» с двух сторон; всё содержимое габаритно внутри.
+        #expect(SidebarMetrics.compactAvatarSize <= SidebarMetrics.compactRowSize)
+        #expect(SidebarMetrics.collapsedWidth
+            == SidebarMetrics.compactRowSize + SidebarMetrics.compactRowInset * 2)
+        // Компактный AccountBar (аватар 30 + интервал 8 + шестерёнка 24)
+        // помещается в колонку без обрезки.
+        #expect(30 + 8 + 24 <= SidebarMetrics.collapsedWidth)
+    }
+
     @Test func handleDragFollowsTheContract() {
         let settings = LocalSettings()
         var handle = SidebarWidthController(settings: settings, workspaceShown: true)
