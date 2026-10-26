@@ -149,25 +149,20 @@ extension TimelineViewController {
         }
         let width = hoverBar.preferredWidth
         let height = HoverActionBar.height
-        // В пузырном режиме бар висит над краем пузыря, а не у края строки (ADR 0041).
-        let bubbleMaxX: CGFloat?
+        // Пузырь (ADR 0041/0062): бар висит над верхней кромкой пузыря, заходя
+        // только в верхнюю набивку, — текст наведённого сообщения не перекрывается.
+        // Flat-режим без пузыря — прежнее оседлание кромки строки.
+        let bubbleFrame: NSRect?
         if let cell = tableView.view(atColumn: 0, row: row, makeIfNecessary: false) as? MessageCellView,
            let bubble = cell.rowLayout.bubble {
-            bubbleMaxX = view.convert(bubble.frame, from: cell).maxX
+            bubbleFrame = view.convert(bubble.frame, from: cell)
         } else {
-            bubbleMaxX = nil
+            bubbleFrame = nil
         }
-        let x = Self.hoverBarX(rowMaxX: rowRect.maxX, bubbleMaxX: bubbleMaxX, barWidth: width, clip: clip)
-        // Straddle the row's top edge (like the official client), kept inside the viewport.
-        var frame: NSRect
-        if view.isFlipped {
-            let top = min(max(rowRect.minY - height / 2 + 4, clip.minY + 2), clip.maxY - height - 2)
-            frame = NSRect(x: x, y: top, width: width, height: height)
-        } else {
-            let bottom = max(min(rowRect.maxY - height / 2 - 4, clip.maxY - height - 2), clip.minY + 2)
-            frame = NSRect(x: x, y: bottom, width: width, height: height)
-        }
-        frame = frame.integral
+        let x = Self.hoverBarX(rowMaxX: rowRect.maxX, bubbleMaxX: bubbleFrame?.maxX, barWidth: width, clip: clip)
+        let y = Self.hoverBarY(bubble: bubbleFrame, rowEdge: view.isFlipped ? rowRect.minY : rowRect.maxY,
+                               barHeight: height, clip: clip, flipped: view.isFlipped)
+        let frame = NSRect(x: x, y: y, width: width, height: height).integral
         if hoverBar.frame != frame { hoverBar.frame = frame }
         hoverBar.isHidden = false
         hoverBar.needsLayout = true
@@ -185,6 +180,33 @@ extension TimelineViewController {
             gap = 0
         }
         return max(clip.minX + 4, anchorRight - barWidth - gap)
+    }
+
+    /// Y позиции hover-бара (ADR 0062). В пузырном режиме бар висит над верхней
+    /// кромкой пузыря, заходя вниз максимум на верхнюю набивку (`TimelineRowMetrics.BubbleMetrics.verticalTopPadding`)
+    /// — глифы наведённого сообщения не перекрываются. Flat-режим без пузыря
+    /// оседлает кромку строки, как в официальном клиенте. Если сверху не влезает —
+    /// бар прижимается к верху видимой области. Возвращает Y рамки бара
+    /// (начало в системе координат `clip`, flipped или нет).
+    static func hoverBarY(bubble: CGRect?, rowEdge: CGFloat, barHeight: CGFloat,
+                          clip: CGRect, flipped: Bool) -> CGFloat {
+        // Заход вниз от кромки анкера: пузырь — только набивка, строка — прежнее
+        // оседлание кромки (половина бара плюс зазор, как в официальном клиенте).
+        let overlap: CGFloat = bubble != nil
+            ? TimelineRowMetrics.BubbleMetrics.verticalTopPadding
+            : barHeight / 2 + 4
+        let desired: CGFloat
+        let clamped: CGFloat
+        if flipped {
+            // Верх пузыря/строки — minY; бар ниже кромки на overlap.
+            desired = (bubble?.minY ?? rowEdge) - barHeight + overlap
+            clamped = min(max(desired, clip.minY + 2), clip.maxY - barHeight - 2)
+        } else {
+            // Верх пузыря/строки — maxY; низ бара ниже кромки на overlap.
+            desired = (bubble?.maxY ?? rowEdge) - overlap
+            clamped = max(min(desired, clip.maxY - barHeight - 2), clip.minY + 2)
+        }
+        return clamped
     }
 
     private func setHoverHighlight(_ id: TimelineItemID?) {

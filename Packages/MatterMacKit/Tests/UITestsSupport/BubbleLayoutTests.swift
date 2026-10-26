@@ -347,6 +347,40 @@ struct BubbleLayoutTests {
         let clamped = TimelineViewController.hoverBarX(rowMaxX: 795, bubbleMaxX: 100, barWidth: 120, clip: clip)
         #expect(clamped == clip.minX + 4)
     }
+
+    /// ADR 0062: в пузырном режиме бар висит над верхней кромкой пузыря,
+    /// заходя только в верхнюю набивку; flat-режим оседает кромку строки
+    /// как раньше; сверху не влезает — прижат к верху видимой области.
+    @Test func hoverBarYKeepsOffTheBubbleText() {
+        let clip = CGRect(x: 0, y: 0, width: 800, height: 600)
+        let padding = TimelineRowMetrics.BubbleMetrics.verticalTopPadding
+        let height = HoverActionBar.height
+        let bubble = CGRect(x: 100, y: 200, width: 300, height: 120)
+        let rowEdge: CGFloat = 200
+
+        // Пузырь, перевёрнутые координаты: низ бара на набивку ниже кромки.
+        let flipped = TimelineViewController.hoverBarY(bubble: bubble, rowEdge: rowEdge,
+                                                       barHeight: height, clip: clip, flipped: true)
+        #expect(abs(flipped + height - bubble.minY - padding) < 0.51)
+        #expect(flipped < bubble.minY, "бар полностью над пузырём, кроме набивки")
+
+        // Пузырь, неперевёрнутые координаты: верх пузыря — maxY.
+        let straight = TimelineViewController.hoverBarY(bubble: bubble, rowEdge: rowEdge + 140,
+                                                        barHeight: height, clip: clip, flipped: false)
+        #expect(abs(bubble.maxY - straight - padding) < 0.51)
+
+        // Flat-режим: прежнее оседлание кромки — половина бара плюс зазор.
+        let flatFlipped = TimelineViewController.hoverBarY(bubble: nil, rowEdge: rowEdge,
+                                                           barHeight: height, clip: clip, flipped: true)
+        #expect(abs(flatFlipped + height - rowEdge - (height / 2 + 4)) < 0.51)
+
+        // Сверху не влезает: пузырь упирается в верх вьюпорта, бар прижат.
+        let topClip = CGRect(x: 0, y: 0, width: 800, height: 600)
+        let tight = TimelineViewController.hoverBarY(bubble: CGRect(x: 100, y: 10, width: 300, height: 120),
+                                                      rowEdge: 5, barHeight: height,
+                                                      clip: topClip, flipped: true)
+        #expect(tight == clip.minY + 2)
+    }
 }
 
 /// Хост-стаб для прямой конфигурации MessageCellView без окна и контроллера.
