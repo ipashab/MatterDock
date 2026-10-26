@@ -15,6 +15,7 @@ struct TimelineInteractionTests {
         func timelineVisibleRangeDidChange(first: PostID?, last: PostID?, isAtLiveEdge: Bool) {}
         func timeline(perform action: TimelineAction) { actions.append(action) }
         func timelineImage(for request: TimelineImageRequest) -> NSImage? { nil }
+        func timelineAnimation(for request: TimelineImageRequest) -> MatterMacCore.ImagePipeline.Animation? { nil }
         var requested: [TimelineImageRequest] = []
         func timelineNeedsImage(_ request: TimelineImageRequest) { requested.append(request) }
     }

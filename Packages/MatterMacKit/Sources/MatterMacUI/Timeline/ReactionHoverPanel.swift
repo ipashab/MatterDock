@@ -68,6 +68,7 @@ final class ReactionHoverPanel: NSView {
         emojiGlyph.isHidden = true
         content.addSubview(emojiGlyph)
         emojiImage.imageScaling = .scaleProportionallyUpOrDown
+        emojiImage.animates = true
         emojiImage.isHidden = true
         content.addSubview(emojiImage)
         isHidden = true

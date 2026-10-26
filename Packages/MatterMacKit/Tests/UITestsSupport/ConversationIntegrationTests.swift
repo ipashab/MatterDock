@@ -553,7 +553,8 @@ struct ConversationIntegrationTests {
         let original = CoreFixtures.post(3, channel: CoreFixtures.channel(1).id, message: "123")
         let h = try await Harness(posts: [original])
         #expect(await waitUntil { h.model.timeline?.items.contains { $0.post?.postID == original.id } == true })
-        let quote = try #require(await h.model.session.post(original.id))
+        // Прогрев: сессия должна знать пост до открытия режима цитаты.
+        _ = try #require(await h.model.session.post(original.id))
         let context = ReplyContext(postID: original.id, authorName: "Pavel Ivanov", snippet: "123")
         h.controller.timeline(perform: .quoteReply(context))
         #expect(h.controller.composer.mode == .quoteReply(quoted: context))

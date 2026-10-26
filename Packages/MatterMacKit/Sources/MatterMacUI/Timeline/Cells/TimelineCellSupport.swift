@@ -12,6 +12,10 @@ protocol TimelineCellHost: AnyObject {
     var allowsQuoteReply: Bool { get }
     /// The quick reactions offered for a message (the user's recent ones first).
     var quickReactions: [String] { get }
+    /// Кадры анимированного эмодзи для запроса или `nil` (статичная картинка).
+    func animation(for request: TimelineImageRequest) -> ImagePipeline.Animation?
+    /// Общий тактовик анимированных эмодзи этого таймлайна.
+    var emojiAnimator: EmojiFrameAnimator { get }
     /// Performs a user-chosen action, first writing pasteboard content it implies
     /// (Copy Link). Used by menus, the hover bar and accessibility actions.
     func performPrepared(_ action: TimelineAction)
@@ -297,8 +301,19 @@ struct ReactionChipMetrics: Equatable {
     var width: CGFloat { ceil(2 * Self.horizontalPadding + emojiWidth + Self.spacing + countWidth) }
 }
 
-final class ReactionChipView: TimelinePressableView {
+final class ReactionChipView: TimelinePressableView, EmojiAnimationTarget {
     var image: NSImage? { didSet { needsDisplay = true } }
+    /// Кадры GIF-эмодзи (ADR 0058): пока заданы, `image` не используется —
+    /// рисуется текущий кадр; перебор ведёт общий `EmojiFrameAnimator`.
+    var animation: ImagePipeline.Animation? {
+        didSet {
+            animationFrameIndex = 0
+            animationStartedAt = CACurrentMediaTime()
+            needsDisplay = true
+        }
+    }
+    private var animationFrameIndex = 0
+    private var animationStartedAt: Double = 0
     private(set) var emoji = ""
     private(set) var countText = ""
     private(set) var isSelectedByCurrentUser = false
@@ -336,9 +351,14 @@ final class ReactionChipView: TimelinePressableView {
                                                           : TimelinePalette.reactionCount,
             ])
             var x = ReactionChipMetrics.horizontalPadding
-            if let image {
+            if let frame = animation?.frames[min(animationFrameIndex, (animation?.frames.count ?? 1) - 1)] {
+                NSImage(cgImage: frame, size: .zero).draw(
+                    in: NSRect(x: x, y: (bounds.height - metrics.emojiWidth) / 2,
+                               width: metrics.emojiWidth, height: metrics.emojiWidth),
+                    from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
+            } else if let image {
                 image.draw(in: NSRect(x: x, y: (bounds.height - metrics.emojiWidth) / 2,
-                                     width: metrics.emojiWidth, height: metrics.emojiWidth),
+                                      width: metrics.emojiWidth, height: metrics.emojiWidth),
                            from: .zero, operation: .sourceOver, fraction: 1, respectFlipped: true, hints: nil)
             } else {
                 emojiText.draw(with: NSRect(x: x - metrics.emojiInkMinX, y: floor((bounds.height - emojiText.size().height) / 2),
@@ -352,10 +372,20 @@ final class ReactionChipView: TimelinePressableView {
     func reset() {
         resetPressable()
         image = nil
+        animation = nil
         emoji = ""
         countText = ""
         isSelectedByCurrentUser = false
         metrics = nil
+    }
+
+    func advanceAnimation(to time: Double) {
+        guard let animation else { return }
+        let index = animation.frameIndex(at: time - animationStartedAt)
+        guard index != animationFrameIndex else { return }
+        animationFrameIndex = index
+        // Чип маленький: перерисовка целиком дешевле вычисления зоны эмодзи.
+        needsDisplay = true
     }
 }
 

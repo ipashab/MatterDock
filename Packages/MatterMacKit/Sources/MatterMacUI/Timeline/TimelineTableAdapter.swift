@@ -90,6 +90,7 @@ extension TimelineViewController: TimelineCellHost {
     var rowMetrics: TimelineRowMetrics { layouter.metrics }
     func perform(_ action: TimelineAction) { delegate?.timeline(perform: action) }
     func image(for request: TimelineImageRequest) -> NSImage? { delegate?.timelineImage(for: request) }
+    func animation(for request: TimelineImageRequest) -> ImagePipeline.Animation? { delegate?.timelineAnimation(for: request) }
     func registerImageDemand(_ request: TimelineImageRequest) {
         let count = imageDemand[request, default: 0]
         imageDemand[request] = count + 1

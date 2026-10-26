@@ -38,14 +38,44 @@ public actor ImagePipeline {
     /// Evicting the cache cannot uncharge an image still held by a visible cell.
     public final class Decoded: Sendable {
         public let image: CGImage
+        /// Кадры анимированного источника (GIF/APNG): `nil` у статичных картинок.
+        /// Первый кадр — тот же `image`; счётчик памяти учитывает все кадры.
+        public let animation: Animation?
         public let byteCost: Int
         private let release: @Sendable () -> Void
-        init(_ image: CGImage, release: @escaping @Sendable () -> Void) {
+        init(_ image: CGImage, animation: Animation? = nil, release: @escaping @Sendable () -> Void) {
             self.image = image
-            byteCost = image.bytesPerRow * image.height
+            self.animation = animation
+            byteCost = animation?.byteCost ?? image.bytesPerRow * image.height
             self.release = release
         }
         deinit { release() }
+    }
+
+    /// Кадры анимированного эмодзи с задержками (секунды). Задержки выровнены
+    /// вниз до минимального шага анимации: слишком короткие кадры (0 с) показываются
+    /// как 0,1 с, как это делают браузеры.
+    public struct Animation: Sendable {
+        public let frames: [CGImage]
+        /// Задержка каждого кадра, секунды; `frames.count == delays.count`.
+        public let delays: [Double]
+        /// Сумма задержек — длительность полного цикла.
+        public let duration: Double
+
+        /// Кадр, видимый через `elapsed` секунд от начала цикла (зациклено).
+        public func frameIndex(at elapsed: Double) -> Int {
+            guard frames.count > 1, duration > 0 else { return 0 }
+            var position = elapsed.truncatingRemainder(dividingBy: duration)
+            if position < 0 { position += duration }
+            var accumulated = 0.0
+            for (index, delay) in delays.enumerated() {
+                accumulated += delay
+                if position < accumulated { return index }
+            }
+            return frames.count - 1
+        }
+
+        var byteCost: Int { frames.reduce(0) { $0 + $1.bytesPerRow * $1.height } }
     }
     private struct Flight {
         let task: Task<Decoded?, Never>
@@ -170,6 +200,22 @@ public actor ImagePipeline {
             return true
         }
         guard admitted else { return nil } // Saturation is not a permanent failed resource.
+        if plan.frameCount > 1 {
+            let decodedFrames = await Self.downsampleFrames(data, frameCount: plan.frameCount,
+                                                            maxPixelSize: plan.maxPixelSize,
+                                                            maximumSourcePixels: budget.maximumSourceImagePixels)
+            let frameBytes = decodedFrames?.byteCost ?? 0
+            guard let animated = decodedFrames, !Task.isCancelled, frameBytes <= reservation else {
+                retainedBytes.withLock { $0 -= reservation }
+                if !Task.isCancelled { failures.set(true, for: key, cost: 1) }
+                return nil
+            }
+            let cost = animated.byteCost
+            retainedBytes.withLock { $0 -= reservation - cost }
+            if !fromDisk, let disk, let diskName { await disk.store(data, .image, diskName, scope: key.scope) }
+            let counter = retainedBytes
+            return Decoded(animated.frames[0], animation: animated) { counter.withLock { $0 -= cost } }
+        }
         guard let image = await Self.downsample(data, maxPixelSize: plan.maxPixelSize,
                                                 maximumSourcePixels: budget.maximumSourceImagePixels),
               !Task.isCancelled, image.bytesPerRow * image.height <= reservation else {
@@ -218,7 +264,20 @@ public actor ImagePipeline {
         /// per edge) at 4 bytes (8-bit sources) or 8 bytes (deeper sources) each, plus
         /// 64 bytes of row alignment per row.
         public let reservedBytes: Int
+        /// Число кадров анимированного источника (GIF/APNG), ограниченное
+        /// `maximumAnimationFrames`; статичные источники — 1.
+        public let frameCount: Int
+
+        fileprivate init(maxPixelSize: Int, reservedBytes: Int, frameCount: Int = 1) {
+            self.maxPixelSize = maxPixelSize
+            self.reservedBytes = reservedBytes
+            self.frameCount = frameCount
+        }
     }
+
+    /// Верхняя граница кадров анимации на ресурс: декод идёт в ожидании эмодзи
+    /// (мелкие картинки), длинные циклы обрезаются и зацикливаются по своей части.
+    public static let maximumAnimationFrames = 16
 
     /// Reads only the source properties. `nil` for undecodable data, missing
     /// dimensions, or sources above `maximumSourcePixels`.
@@ -241,7 +300,9 @@ public actor ImagePipeline {
         let bytesPerPixel = depth > 8 ? 8 : 4
         // Orientation may swap the edges; alignment is charged for the longer one.
         let rows = max(outWidth, outHeight)
-        return DecodePlan(maxPixelSize: edge, reservedBytes: outWidth * outHeight * bytesPerPixel + rows * 64)
+        let frameBytes = outWidth * outHeight * bytesPerPixel + rows * 64
+        let frameCount = min(CGImageSourceGetCount(source), maximumAnimationFrames)
+        return DecodePlan(maxPixelSize: edge, reservedBytes: frameBytes * frameCount, frameCount: frameCount)
     }
 
     /// Downsamples encoded image data to at most `maxPixelSize` on the longest edge,
@@ -265,8 +326,43 @@ public actor ImagePipeline {
             kCGImageSourceShouldAllowFloat: false,
             kCGImageSourceThumbnailMaxPixelSize: max(1, maxPixelSize),
         ] as CFDictionary
-        // Animated images: only the first frame is decoded (paused by default).
+        // Animated images: only the first frame is decoded here; animated emoji go
+        // through `downsampleFrames`.
         return CGImageSourceCreateThumbnailAtIndex(source, 0, options)
+    }
+
+    /// Декодирует все кадры анимированного источника (GIF/APNG) в одном размере.
+    /// Задержки читаются из метаданных кадра; нулевые и отрицательные выравниваются
+    /// до 0,1 с (как в браузерах), иначе цикл схлопывается в один кадр.
+    @concurrent
+    static func downsampleFrames(_ data: Data, frameCount: Int, maxPixelSize: Int,
+                                 maximumSourcePixels: Int) async -> Animation? {
+        guard maxPixelSize > 0, maximumSourcePixels > 0, frameCount > 1 else { return nil }
+        let sourceOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(data as CFData, sourceOptions),
+              CGImageSourceGetCount(source) >= frameCount else { return nil }
+        let options = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceShouldAllowFloat: false,
+            kCGImageSourceThumbnailMaxPixelSize: max(1, maxPixelSize),
+        ] as CFDictionary
+        var frames: [CGImage] = []
+        var delays: [Double] = []
+        for index in 0..<frameCount {
+            guard let frame = CGImageSourceCreateThumbnailAtIndex(source, index, options) else { return nil }
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, index, options) as? [CFString: Any]
+            let gif = properties?[kCGImagePropertyGIFDictionary] as? [CFString: Any]
+            let png = properties?[kCGImagePropertyPNGDictionary] as? [CFString: Any]
+            let raw = gif?[kCGImagePropertyGIFUnclampedDelayTime] as? Double
+                ?? gif?[kCGImagePropertyGIFDelayTime] as? Double
+                ?? png?[kCGImagePropertyAPNGDelayTime] as? Double
+                ?? 0
+            frames.append(frame)
+            delays.append(raw > 0 ? raw : 0.1)
+        }
+        return Animation(frames: frames, delays: delays, duration: delays.reduce(0, +))
     }
 }
 

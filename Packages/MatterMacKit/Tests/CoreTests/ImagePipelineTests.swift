@@ -179,6 +179,41 @@ struct ImagePipelineTests {
         #expect(await gate.activeCount == 0)
     }
 
+    @Test func animatedGIFDecodesAllFramesWithDelaysAndLoopIndex() async throws {
+        // GIF-эмодзи (ADR 0058): план знает число кадров, декод отдаёт все кадры
+        // с задержками, счётчик памяти учитывает сумму кадров, индекс циклится.
+        let data = CoreFixtures.gif(frames: 2, delay: 0.2)
+        let plan = try #require(ImagePipeline.decodePlan(data, maxPixelSize: 32, maximumSourcePixels: 50_000_000))
+        #expect(plan.frameCount == 2)
+        let animation = try #require(await ImagePipeline.downsampleFrames(
+            data, frameCount: plan.frameCount, maxPixelSize: plan.maxPixelSize, maximumSourcePixels: 50_000_000))
+        #expect(animation.frames.count == 2)
+        #expect(animation.delays.allSatisfy { abs($0 - 0.2) < 0.01 })
+        #expect(abs(animation.duration - 0.4) < 0.05)
+        #expect(animation.frameIndex(at: 0) == 0)
+        #expect(animation.frameIndex(at: 0.25) == 1)
+        #expect(animation.frameIndex(at: 0.45) == 0, "цикл замыкается на первый кадр")
+        // Статичная картинка кадры не приносит.
+        let still = try #require(ImagePipeline.decodePlan(CoreFixtures.png(), maxPixelSize: 32, maximumSourcePixels: 50_000_000))
+        #expect(still.frameCount == 1)
+
+        let service = FakeMattermostService(endpoint: CoreFixtures.endpoint, me: CoreFixtures.me)
+        service.withState { $0.imageHandler = { _, _ in data } }
+        let pipeline = ImagePipeline(budget: .standard, diagnostics: DiagnosticRing(byteBudget: 1_024))
+        let key = ImagePipeline.Key(scope: scope, resource: .customEmoji(id: "gif"), maxPixelSize: 32)
+        var decoded: ImagePipeline.Decoded?
+        decoded = await pipeline.image(for: key, using: service)
+        let frames = try #require(decoded?.animation)
+        #expect(decoded?.image === frames.frames[0])
+        #expect(decoded?.byteCost == frames.byteCost)
+        #expect(await pipeline.decodedBytes == frames.byteCost)
+        await pipeline.purge(scope: scope)
+        #expect(await pipeline.decodedBytes == frames.byteCost,
+                "кадры держит живая ссылка — высвобождение только после неё")
+        decoded = nil
+        #expect(await pipeline.decodedBytes == 0)
+    }
+
     private func eventually(_ condition: () async -> Bool) async -> Bool {
         let deadline = ContinuousClock.now + .seconds(3)
         while !(await condition()), ContinuousClock.now < deadline { try? await Task.sleep(for: .milliseconds(5)) }

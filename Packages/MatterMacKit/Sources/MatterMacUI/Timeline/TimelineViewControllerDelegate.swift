@@ -116,6 +116,9 @@ public protocol TimelineViewControllerDelegate: AnyObject {
     func timeline(perform action: TimelineAction)
     /// Synchronous in-memory cache lookup; must not block or decode on the main actor.
     func timelineImage(for request: TimelineImageRequest) -> NSImage?
+    /// Кадры анимированного эмодзи для этого запроса, если источник GIF/APNG;
+    /// `nil` — статичная картинка (ADR 0058).
+    func timelineAnimation(for request: TimelineImageRequest) -> ImagePipeline.Animation?
     /// The image is needed by a displayed row and was not cached. When it becomes
     /// available, call `TimelineViewController.imageDidBecomeAvailable(_:)`.
     func timelineNeedsImage(_ request: TimelineImageRequest)

@@ -359,6 +359,8 @@ private final class StubCellHost: TimelineCellHost {
     func perform(_ action: TimelineAction) {}
     func performPrepared(_ action: TimelineAction) {}
     func image(for request: TimelineImageRequest) -> NSImage? { nil }
+    func animation(for request: TimelineImageRequest) -> ImagePipeline.Animation? { nil }
+    let emojiAnimator = EmojiFrameAnimator()
     func registerImageDemand(_ request: TimelineImageRequest) {}
     func unregisterImageDemand(_ request: TimelineImageRequest) {}
     func requestOlderFromGapButton() {}

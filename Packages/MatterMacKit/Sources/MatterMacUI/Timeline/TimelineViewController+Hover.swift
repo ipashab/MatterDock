@@ -234,7 +234,7 @@ extension TimelineViewController {
                                 hint: group.includesCurrentUser ? TimelineStrings.reactionRemoveHint
                                                                 : TimelineStrings.reactionAddHint,
                                 glyph: renderer.emojiText(for: group.emojiName),
-                                image: request.flatMap { image(for: $0) })
+                                image: request.flatMap { animation(for: $0)?.nsImage ?? image(for: $0) })
         reactionPanelRequest = request
         positionReactionPanel(cell: cell, chipInCell: hit.frame)
     }

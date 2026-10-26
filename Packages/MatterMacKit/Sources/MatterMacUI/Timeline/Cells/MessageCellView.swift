@@ -121,6 +121,9 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
     private var attachmentOverflowLabel: TimelineLabel?
     private var reactionViews: [ReactionChipView] = []
     private var displayedReactions: [ReactionGroup] = []
+    /// Живые анимированные эмодзи этой строки (ADR 0058): эмодзи-идентификатор →
+    /// вложения в тексте и чипы; снимаются с тактовика при уходе строки.
+    private var animatedTargets: [String: [any EmojiAnimationTarget]] = [:]
     private var reactionOverflowLabel: TimelineLabel?
     private var linkPreviewView: LinkPreviewCardView?
     private var linkPreviewRequest: TimelineImageRequest?
@@ -255,7 +258,20 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
             attachment.bounds = template.bounds
             let request = TimelineImageRequest.customEmoji(id)
             emojiRequests.insert(request)
-            attachment.attachmentCell = CustomEmojiAttachmentCell(bounds: template.bounds, image: resolveImage(request))
+            // Demand регистрируется всегда: lease кадрa держится, пока строка
+            // на экране. Ужё кэшированный GIF анимируем сразу; иначе кадры
+            // придут через imageDidBecomeAvailable → setEmojiImage.
+            let image = resolveImage(request)
+            let cell: CustomEmojiAttachmentCell
+            if let animation = host.animation(for: request) {
+                let animated = AnimatedEmojiAttachmentCell(bounds: template.bounds, animation: animation)
+                animatedTargets[id, default: []].append(animated)
+                host.emojiAnimator.register(animated)
+                cell = animated
+            } else {
+                cell = CustomEmojiAttachmentCell(bounds: template.bounds, image: image)
+            }
+            attachment.attachmentCell = cell
             displayedBody.addAttribute(.attachment, value: attachment, range: range)
         }
         bodyTextView.setText(displayedBody, width: layout.body.width)
@@ -646,16 +662,43 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
 
     private func setEmojiImage(_ image: NSImage?, for request: TimelineImageRequest) {
         guard case .customEmoji(let id) = request else { return }
+        let animation = image != nil ? host?.animation(for: request) : nil
+        // Прежние анимированные цели эмодзи заменяются: кадры переехали в новые
+        // ячейки или источник перестал быть анимированным.
+        if let previous = animatedTargets.removeValue(forKey: id), let host {
+            for target in previous { host.emojiAnimator.unregister(target) }
+        }
+        var registered: [any EmojiAnimationTarget] = []
         if let storage = bodyTextView.textStorage {
+            var replaced = false
             storage.enumerateAttribute(.matterMacCustomEmoji, in: NSRange(location: 0, length: storage.length)) { value, range, _ in
                 guard value as? String == id,
                       let attachment = storage.attribute(.attachment, at: range.location, effectiveRange: nil) as? NSTextAttachment else { return }
-                (attachment.attachmentCell as? CustomEmojiAttachmentCell)?.image = image
+                if let animation {
+                    let cell = AnimatedEmojiAttachmentCell(bounds: attachment.bounds, animation: animation)
+                    registered.append(cell)
+                    attachment.attachmentCell = cell
+                    replaced = true
+                } else {
+                    (attachment.attachmentCell as? CustomEmojiAttachmentCell)?.image = image
+                }
             }
-            bodyTextView.needsDisplay = true
+            if replaced { bodyTextView.needsDisplay = true }
         }
         for (index, reaction) in (post?.reactions ?? []).prefix(reactionViews.count).enumerated()
-            where reaction.customEmojiID == id { reactionViews[index].image = image }
+            where reaction.customEmojiID == id {
+            if let animation {
+                reactionViews[index].animation = animation
+                registered.append(reactionViews[index])
+            } else {
+                reactionViews[index].animation = nil
+                reactionViews[index].image = image
+            }
+        }
+        if !registered.isEmpty, let host {
+            for target in registered { host.emojiAnimator.register(target) }
+            animatedTargets[id] = registered
+        }
     }
 
     var hasOutstandingImageRequests: Bool { !outstandingRequests.isEmpty }
@@ -670,6 +713,10 @@ final class MessageCellView: NSTableCellView, NSTextViewDelegate {
     func releaseImageDemand() {
         avatarView.image = nil
         for request in emojiRequests { setEmojiImage(nil, for: request) }
+        if let host {
+            for targets in animatedTargets.values { for target in targets { host.emojiAnimator.unregister(target) } }
+        }
+        animatedTargets.removeAll()
         for view in thumbnailViews { view.setImage(nil) }
         for view in threadAvatarViews { view.image = nil }
         linkPreviewView?.setImage(nil)

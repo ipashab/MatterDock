@@ -159,6 +159,7 @@ struct TimelineIntegrationTests {
         func timelineVisibleRangeDidChange(first: PostID?, last: PostID?, isAtLiveEdge: Bool) {}
         func timeline(perform action: TimelineAction) {}
         func timelineImage(for request: TimelineImageRequest) -> NSImage? { nil }
+        func timelineAnimation(for request: TimelineImageRequest) -> MatterMacCore.ImagePipeline.Animation? { nil }
         func timelineNeedsImage(_ request: TimelineImageRequest) {}
     }
 

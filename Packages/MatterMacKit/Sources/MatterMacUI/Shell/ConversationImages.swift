@@ -4,7 +4,9 @@ import MatterMacCore
 import MattermostAPI
 
 extension ConversationController {
-    func timelineImage(for request: TimelineImageRequest) -> NSImage? { displayedImages[request]?.image }
+    func timelineImage(for request: TimelineImageRequest) -> NSImage? { displayedImages[request]?.nsImage }
+
+    func timelineAnimation(for request: TimelineImageRequest) -> ImagePipeline.Animation? { displayedImages[request]?.lease.animation }
 
     func timelineNeedsImage(_ request: TimelineImageRequest) {
         guard imageTasks[request] == nil, displayedImages[request] == nil,

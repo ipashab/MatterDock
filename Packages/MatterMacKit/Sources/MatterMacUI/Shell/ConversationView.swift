@@ -51,7 +51,7 @@ final class ConversationController: NSViewController, DraftProviding, ComposerVi
     }
     private var editingStateDiscarded = false
     var imageTasks: [TimelineImageRequest: Task<Void, Never>] = [:]
-    var displayedImages: [TimelineImageRequest: (lease: ImagePipeline.Decoded, image: NSImage)] = [:]
+    var displayedImages: [TimelineImageRequest: (lease: ImagePipeline.Decoded, nsImage: NSImage)] = [:]
     var imageGeneration: UInt64 = 0
     /// At most one explicitly opened image viewer per pane; closed with the pane's images.
     var imageViewer: MediaViewerController?

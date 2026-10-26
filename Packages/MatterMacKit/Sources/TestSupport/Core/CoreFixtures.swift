@@ -19,6 +19,27 @@ public enum CoreFixtures {
         return bytes as Data
     }
 
+    /// Two-or-more-frame animated GIF built entirely in memory: each frame is a
+    /// solid color square, all with the same GIF delay.
+    public static func gif(frames: Int, delay: Double, side: Int = 32) -> Data {
+        precondition(frames >= 1)
+        let bytes = NSMutableData()
+        let destination = CGImageDestinationCreateWithData(bytes, "com.compuserve.gif" as CFString, frames, nil)!
+        for index in 0..<frames {
+            let context = CGContext(data: nil, width: side, height: side, bitsPerComponent: 8, bytesPerRow: side * 4,
+                                    space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)!
+            let level = CGFloat(index) / CGFloat(max(1, frames - 1))
+            context.setFillColor(CGColor(red: level, green: 1 - level, blue: 0.5, alpha: 1))
+            context.fill(CGRect(x: 0, y: 0, width: side, height: side))
+            let properties: [CFString: Any] = [
+                kCGImagePropertyGIFDictionary: [kCGImagePropertyGIFDelayTime: delay],
+            ]
+            CGImageDestinationAddImage(destination, context.makeImage()!, properties as CFDictionary)
+        }
+        precondition(CGImageDestinationFinalize(destination))
+        return bytes as Data
+    }
+
     /// A unique 26-character id: the number is terminated by "x" so that e.g. 1 and 10
     /// can never collide after padding.
     public static func id(_ prefix: String, _ n: Int) -> String {

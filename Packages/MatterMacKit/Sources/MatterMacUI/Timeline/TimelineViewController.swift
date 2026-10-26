@@ -29,6 +29,8 @@ public final class TimelineViewController: NSViewController {
     /// Панель канала предлагает ответ-цитату (ADR 0057); панель треда — нет.
     /// Читается адаптером меню и ячейками для accessibility-действий.
     var allowsQuoteReply = true
+    /// Общий тактовик анимированных эмодзи (GIF-вложения и чипы, ADR 0058).
+    let emojiAnimator = EmojiFrameAnimator()
 
     /// Text scale applied to the system body font (session-only preference).
     public var fontScale: CGFloat = 1 {
@@ -578,7 +580,9 @@ public final class TimelineViewController: NSViewController {
     public func imageDidBecomeAvailable(_ request: TimelineImageRequest) {
         guard isViewLoaded, imageDemand[request] != nil else { return }
         if reactionPanel.itemID != nil, reactionPanelRequest == request {
-            reactionPanel.updateEmojiImage(image(for: request))
+            // GIF-эмодзи приходят всеми кадрами (ADR 0058); статика — одним.
+            let animation = animation(for: request)
+            reactionPanel.updateEmojiImage(animation?.nsImage ?? image(for: request))
         }
         tableView.enumerateAvailableRowViews { rowView, _ in
             (rowView.view(atColumn: 0) as? MessageCellView)?.imageDidBecomeAvailable(request)
@@ -618,6 +622,7 @@ public final class TimelineViewController: NSViewController {
             reactionPanel.reset()
             hoverHighlightedID = nil
             hoverTimestampID = nil
+            emojiAnimator.removeAll()
             tableView.reloadData()
             updateNewMessagesButton()
         }

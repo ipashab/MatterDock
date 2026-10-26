@@ -530,7 +530,7 @@ final class RenderState {
 
 /// TextKit 1 measures the attachment cell, not NSTextAttachment.bounds. Keep
 /// cell geometry independent of the image's pixel dimensions and arrival time.
-final class CustomEmojiAttachmentCell: NSTextAttachmentCell {
+class CustomEmojiAttachmentCell: NSTextAttachmentCell {
     nonisolated let fixedBounds: NSRect
 
     init(bounds: NSRect, image: NSImage? = nil) {
@@ -551,5 +551,37 @@ final class CustomEmojiAttachmentCell: NSTextAttachmentCell {
             NSAttributedString(string: ":", attributes: [.foregroundColor: NSColor.secondaryLabelColor])
                 .draw(in: cellFrame)
         }
+    }
+}
+/// Вложение анимированного эмодзи (GIF/APNG, ADR 0058): кадры перебирает общий
+/// `EmojiFrameAnimator` таймлайна — ячейка лишь вычисляет текущий кадр по
+/// времени и помечает свою зону грязной. Пропавшая из экрана ячейка перестаёт
+/// перерисовываться вместе с контролом; тактовик чистит её слабую ссылку сам.
+final class AnimatedEmojiAttachmentCell: CustomEmojiAttachmentCell, EmojiAnimationTarget {
+    private let animation: ImagePipeline.Animation
+    private let startedAt: Double
+    private var lastIndex = 0
+    private var lastFrame: NSRect?
+
+    init(bounds: NSRect, animation: ImagePipeline.Animation) {
+        self.animation = animation
+        self.startedAt = CACurrentMediaTime()
+        super.init(bounds: bounds, image: NSImage(cgImage: animation.frames[0], size: .zero))
+    }
+
+    @available(*, unavailable)
+    required init(coder: NSCoder) { fatalError("init(coder:) is not supported") }
+
+    override func draw(withFrame cellFrame: NSRect, in controlView: NSView?) {
+        lastFrame = cellFrame
+        super.draw(withFrame: cellFrame, in: controlView)
+    }
+
+    func advanceAnimation(to time: Double) {
+        let index = animation.frameIndex(at: time - startedAt)
+        guard index != lastIndex else { return }
+        lastIndex = index
+        image = NSImage(cgImage: animation.frames[index], size: .zero)
+        controlView?.setNeedsDisplay(lastFrame ?? .zero)
     }
 }
