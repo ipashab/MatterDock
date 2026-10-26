@@ -42,6 +42,10 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
     static let inset: CGFloat = 8
     static let headerHeight: CGFloat = 22
     static let categoryBarHeight: CGFloat = 22
+    /// Минимальная высота при усечении (ADR 0061): поиск, вкладки категорий
+    /// и три ряда сетки — меньше попап не сжимается, лучше перекрыть
+    /// сообщение, чем показать один ряд.
+    static let minimumHeight: CGFloat = 240
     /// Search results shown at most (the catalog bounds the work as well).
     static let maximumResults = 90
     static var preferredSize: NSSize {
@@ -59,6 +63,10 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
     private let emptyLabel = NSTextField(labelWithString: String(localized: "No matching emoji"))
     /// Панель превью по удержанию (для тестов).
     let holdPreview = EmojiHoldPreview()
+    /// ADR 0061: потолок высоты (constraints) и усечённая высота,
+    /// применяемая при показе.
+    private var heightCeiling: NSLayoutConstraint?
+    private var heightOverride: CGFloat?
     /// Вкладки категорий под поиском (ADR 0059): клик прокручивает сетку
     /// к разделу, активная следует за скроллом. Скрыты во время поиска.
     let categoryBar = NSStackView(views: [])
@@ -158,7 +166,9 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
         root.addSubview(holdPreview)
         NSLayoutConstraint.activate([
             root.widthAnchor.constraint(equalToConstant: Self.preferredSize.width),
-            root.heightAnchor.constraint(equalToConstant: Self.preferredSize.height),
+            // ADR 0061: высота — диапазон: при нехватке места у сообщения попап
+            // усекается (сетка скроллится), а не наезжает на сообщение.
+            root.heightAnchor.constraint(greaterThanOrEqualToConstant: Self.minimumHeight),
             searchField.topAnchor.constraint(equalTo: root.topAnchor, constant: Self.inset),
             searchField.leadingAnchor.constraint(equalTo: root.leadingAnchor, constant: Self.inset),
             searchField.trailingAnchor.constraint(equalTo: root.trailingAnchor, constant: -Self.inset),
@@ -173,9 +183,28 @@ final class ReactionPickerViewController: NSViewController, NSSearchFieldDelegat
             emptyLabel.centerXAnchor.constraint(equalTo: scrollView.centerXAnchor),
             emptyLabel.centerYAnchor.constraint(equalTo: scrollView.centerYAnchor),
         ])
+        heightCeiling = root.heightAnchor.constraint(lessThanOrEqualToConstant: Self.preferredSize.height)
+        heightCeiling?.isActive = true
         view = root
         preferredContentSize = Self.preferredSize
+        applyHeightOverride()
         apply(query: "")
+    }
+
+    /// ADR 0061: усечённая высота, заданная до показа (в `present`), когда у
+    /// сообщения нет места под полный попап. До `loadView` сохраняется в
+    /// `heightOverride` и применяется здесь.
+    func constrainHeight(to height: CGFloat) {
+        let capped = min(max(height, Self.minimumHeight), Self.preferredSize.height)
+        guard capped != Self.preferredSize.height else { return }
+        heightOverride = capped
+        if isViewLoaded { applyHeightOverride() }
+    }
+
+    private func applyHeightOverride() {
+        guard let heightOverride else { return }
+        heightCeiling?.constant = heightOverride
+        preferredContentSize = NSSize(width: Self.preferredSize.width, height: heightOverride)
     }
 
     override func viewDidAppear() {
@@ -905,6 +934,17 @@ enum ReactionPickerPresenter {
                                                  popoverHeight: ReactionPickerViewController.preferredSize.height)
             anchor = placement.anchor
             edge = placement.edge
+            // ADR 0061: на выбранной стороне может не быть места под полный попап —
+            // тогда усекаем его высоту, иначе AppKit прижмёт попап к экрану
+            // прямо на сообщение.
+            if let spaces = Self.screenSpaces(bubble: row, in: timeline.view) {
+                let room = Self.fittedHeight(spaceAbove: spaces.above, spaceBelow: spaces.below,
+                                             above: placement.above)
+                if room < ReactionPickerViewController.preferredSize.height {
+                    picker.constrainHeight(to: room)
+                    popover.contentSize = NSSize(width: ReactionPickerViewController.preferredSize.width, height: room)
+                }
+            }
         } else {
             anchor = NSRect(x: bounds.midX, y: bounds.minY + 8, width: 1, height: 1)
             edge = .maxY
@@ -920,16 +960,32 @@ enum ReactionPickerPresenter {
     /// выходить за пределы окна, но не за экран. Якорь по центру пузыря
     /// горизонтально; стрелка указывает на край сообщения.
     static func anchorPlacement(bubble: NSRect, in view: NSView, popoverHeight: CGFloat)
-        -> (anchor: NSRect, edge: NSRectEdge) {
-        guard let window = view.window else {
-            return stripAndEdge(above: true, flipped: view.isFlipped, bubble: bubble)
+        -> (anchor: NSRect, edge: NSRectEdge, above: Bool) {
+        guard let spaces = screenSpaces(bubble: bubble, in: view) else {
+            return (stripAndEdge(above: true, flipped: view.isFlipped, bubble: bubble).anchor,
+                   stripAndEdge(above: true, flipped: view.isFlipped, bubble: bubble).edge, true)
         }
+        let above = isAbovePreferred(spaceAbove: spaces.above, spaceBelow: spaces.below,
+                                     popoverHeight: popoverHeight)
+        let strip = stripAndEdge(above: above, flipped: view.isFlipped, bubble: bubble)
+        return (strip.anchor, strip.edge, above)
+    }
+
+    /// Место до видимых границ экрана над и под пузырём (ADR 0061).
+    static func screenSpaces(bubble: NSRect, in view: NSView) -> (above: CGFloat, below: CGFloat)? {
+        guard let window = view.window else { return nil }
         let bubbleOnScreen = window.convertToScreen(view.convert(bubble, to: nil))
         let visible = (window.screen ?? NSScreen.main)?.visibleFrame ?? bubbleOnScreen
-        let above = isAbovePreferred(spaceAbove: visible.maxY - bubbleOnScreen.maxY,
-                                     spaceBelow: bubbleOnScreen.minY - visible.minY,
-                                     popoverHeight: popoverHeight)
-        return stripAndEdge(above: above, flipped: view.isFlipped, bubble: bubble)
+        return (visible.maxY - bubbleOnScreen.maxY, bubbleOnScreen.minY - visible.minY)
+    }
+
+    /// Высота попапа, которая точно помещается на выбранной стороне
+    /// (ADR 0061): полный размер, а при нехватке — доступное место
+    /// за вычетом стрелки, но не меньше минимальной высоты пикера.
+    static func fittedHeight(spaceAbove: CGFloat, spaceBelow: CGFloat, above: Bool) -> CGFloat {
+        let available = (above ? spaceAbove : spaceBelow) - 14
+        return min(ReactionPickerViewController.preferredSize.height,
+                   max(ReactionPickerViewController.minimumHeight, available))
     }
 
     /// Где места больше: над пузырём? Сторона, куда попап целиком помещается

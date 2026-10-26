@@ -601,6 +601,20 @@ struct ReactionPickerAnchorTests {
         #expect(ReactionPickerPresenter.isAbovePreferred(spaceAbove: 300, spaceBelow: 300, popoverHeight: height))
     }
 
+    /// ADR 0061: при нехватке места на выбранной стороне попап усекается
+    /// до доступного места вместо наезда на сообщение.
+    @Test func fittedHeightShrinksToAvailableSpace() {
+        let full = ReactionPickerViewController.preferredSize.height
+        let minimum = ReactionPickerViewController.minimumHeight
+        // Место есть — полный размер.
+        #expect(ReactionPickerPresenter.fittedHeight(spaceAbove: 800, spaceBelow: 500, above: true) == full)
+        // Сверху 300 — усечение до 300 минус стрелка.
+        #expect(ReactionPickerPresenter.fittedHeight(spaceAbove: 300, spaceBelow: 100, above: true) == 286)
+        // Меньше минимума — минимум.
+        #expect(ReactionPickerPresenter.fittedHeight(spaceAbove: 500, spaceBelow: 80, above: false) == minimum)
+        #expect(ReactionPickerPresenter.fittedHeight(spaceAbove: 80, spaceBelow: 500, above: true) == minimum)
+    }
+
     @Test func stripSitsAtTheChosenEdgeOfTheBubble() {
         // Перевёрнутый вид таймлайна: верх пузыря — minY.
         let above = ReactionPickerPresenter.stripAndEdge(above: true, flipped: true, bubble: bubble)
